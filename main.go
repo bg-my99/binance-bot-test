@@ -5,14 +5,15 @@ import (
 	"time"
 
 	"github.com/adshao/go-binance/v2"
-)
 
-var (
-	apiKey    = ""
-	secretKey = ""
+	"binance-bot-test/config"
 )
 
 func main() {
+
+	var cfg config.Config
+	config.ReadEnv(&cfg)
+	fmt.Printf("%+v", cfg)
 
 	binance.UseTestnet = true
 	wsDepthHandler := func(event *binance.WsDepthEvent) {
