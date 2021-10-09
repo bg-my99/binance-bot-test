@@ -13,9 +13,14 @@ func main() {
 
 	var cfg config.Config
 	config.ReadEnv(&cfg)
-	fmt.Printf("%+v", cfg)
+	fmt.Printf("%+v\n", cfg)
 
-	binance.UseTestnet = true
+	whichNet := "main network"
+	if cfg.UseTestnet {
+		whichNet = "testnet"
+	}
+	fmt.Printf("Connecting to %s\n", whichNet)
+	binance.UseTestnet = cfg.UseTestnet
 	wsDepthHandler := func(event *binance.WsDepthEvent) {
 		fmt.Println(event)
 	}
