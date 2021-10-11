@@ -22,7 +22,16 @@ func main() {
 	fmt.Printf("Connecting to %s\n", whichNet)
 	binance.UseTestnet = cfg.UseTestnet
 	wsDepthHandler := func(event *binance.WsDepthEvent) {
-		fmt.Println(event)
+
+		fmt.Printf("%s:\n", time.Unix(event.Time/1e3, (event.Time%1e3)*1e6).Format(time.RFC3339))
+
+		for _, bid := range event.Bids {
+			fmt.Printf("\t%v\n", bid)
+		}
+
+		for _, ask := range event.Asks {
+			fmt.Printf("\t%v\n", ask)
+		}
 	}
 	errHandler := func(err error) {
 		fmt.Println(err)
