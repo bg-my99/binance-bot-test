@@ -10,6 +10,33 @@ import (
 	"binance-bot-test/config"
 )
 
+func replaceBid(newBid *binance.Bid, depth *binance.DepthResponse) {
+
+	for i, bid := range depth.Bids {
+		if newBid.Price == bid.Price {
+			depth.Bids[i] = *newBid
+		}
+	}
+}
+
+func replaceAsk(newAsk *binance.Ask, depth *binance.DepthResponse) {
+
+	for i, ask := range depth.Asks {
+		if newAsk.Price == ask.Price {
+			depth.Asks[i] = *newAsk
+		}
+	}
+}
+
+func displayOrderBook(depth *binance.DepthResponse) {
+
+	fmt.Print("\033[H\033[2J")
+
+	for row := 0; row < 30; row++ {
+		fmt.Printf("%v\t %v\n", depth.Bids[row], depth.Asks[row])
+	}
+}
+
 func main() {
 
 	var cfg config.Config
@@ -26,18 +53,18 @@ func main() {
 	client := binance.NewClient(cfg.AccessKeys.ApiKey, cfg.AccessKeys.SecretKey)
 	symbol := "LTCBTC"
 	depthSnapshot, err := client.NewDepthService().Symbol(symbol).Limit(1000).Do(context.Background())
-	fmt.Printf("%v\n", depthSnapshot)
 
 	wsDepthHandler := func(event *binance.WsDepthEvent) {
 
-		fmt.Printf("%s:\n", time.Unix(event.Time/1e3, (event.Time%1e3)*1e6).Format(time.RFC3339))
+		if event.LastUpdateID > depthSnapshot.LastUpdateID {
 
-		for _, bid := range event.Bids {
-			fmt.Printf("\t%v\n", bid)
-		}
-
-		for _, ask := range event.Asks {
-			fmt.Printf("\t%v\n", ask)
+			for _, bid := range event.Bids {
+				replaceBid(&bid, depthSnapshot)
+			}
+			for _, ask := range event.Asks {
+				replaceAsk(&ask, depthSnapshot)
+			}
+			displayOrderBook(depthSnapshot)
 		}
 	}
 	errHandler := func(err error) {
