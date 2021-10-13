@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/adshao/go-binance/v2"
@@ -13,12 +14,22 @@ import (
 
 func replaceBid(newBid *binance.Bid, bids map[string]string) {
 
-	bids[newBid.Price] = newBid.Quantity
+	f, _ := strconv.ParseFloat(newBid.Quantity, 64)
+	if f == 0.0 {
+		delete(bids, newBid.Price)
+	} else {
+		bids[newBid.Price] = newBid.Quantity
+	}
 }
 
 func replaceAsk(newAsk *binance.Ask, asks map[string]string) {
 
-	asks[newAsk.Price] = newAsk.Quantity
+	f, _ := strconv.ParseFloat(newAsk.Quantity, 64)
+	if f == 0.0 {
+		delete(asks, newAsk.Price)
+	} else {
+		asks[newAsk.Price] = newAsk.Quantity
+	}
 }
 
 func displayOrderBook(bids map[string]string, asks map[string]string) {
@@ -94,7 +105,7 @@ func main() {
 	}
 	// use stopC to exit
 	go func() {
-		time.Sleep(5 * time.Second)
+		time.Sleep(50 * time.Second)
 		stopC <- struct{}{}
 	}()
 	// remove this if you do not want to be blocked here
