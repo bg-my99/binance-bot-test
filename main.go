@@ -54,6 +54,16 @@ func main() {
 	symbol := "LTCBTC"
 	depthSnapshot, err := client.NewDepthService().Symbol(symbol).Limit(1000).Do(context.Background())
 
+	bids := map[string]string{}
+	for _, bid := range depthSnapshot.Bids {
+		bids[bid.Price] = bid.Quantity
+	}
+
+	asks := map[string]string{}
+	for _, ask := range depthSnapshot.Asks {
+		asks[ask.Price] = ask.Quantity
+	}
+
 	wsDepthHandler := func(event *binance.WsDepthEvent) {
 
 		if event.LastUpdateID > depthSnapshot.LastUpdateID {
