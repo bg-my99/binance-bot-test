@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/adshao/go-binance/v2"
@@ -10,30 +11,36 @@ import (
 	"binance-bot-test/config"
 )
 
-func replaceBid(newBid *binance.Bid, depth *binance.DepthResponse) {
+func replaceBid(newBid *binance.Bid, bids map[string]string) {
 
-	for i, bid := range depth.Bids {
-		if newBid.Price == bid.Price {
-			depth.Bids[i] = *newBid
-		}
-	}
+	bids[newBid.Price] = newBid.Quantity
 }
 
-func replaceAsk(newAsk *binance.Ask, depth *binance.DepthResponse) {
+func replaceAsk(newAsk *binance.Ask, asks map[string]string) {
 
-	for i, ask := range depth.Asks {
-		if newAsk.Price == ask.Price {
-			depth.Asks[i] = *newAsk
-		}
-	}
+	asks[newAsk.Price] = newAsk.Quantity
 }
 
-func displayOrderBook(depth *binance.DepthResponse) {
+func displayOrderBook(bids map[string]string, asks map[string]string) {
 
 	fmt.Print("\033[H\033[2J")
 
+	bidsSorted := make([]string, 0)
+	for k, _ := range bids {
+		bidsSorted = append(bidsSorted, k)
+	}
+	sort.Strings(bidsSorted)
+
+	asksSorted := make([]string, 0)
+	for k, _ := range asks {
+		asksSorted = append(asksSorted, k)
+	}
+	sort.Strings(asksSorted)
+
+	b := len(bidsSorted) - 1
 	for row := 0; row < 30; row++ {
-		fmt.Printf("%v\t %v\n", depth.Bids[row], depth.Asks[row])
+		fmt.Printf("%s (%s)\t %s (%s)\n", bidsSorted[b], bids[bidsSorted[b]], asksSorted[row], asks[asksSorted[row]])
+		b--
 	}
 }
 
@@ -69,12 +76,12 @@ func main() {
 		if event.LastUpdateID > depthSnapshot.LastUpdateID {
 
 			for _, bid := range event.Bids {
-				replaceBid(&bid, depthSnapshot)
+				replaceBid(&bid, bids)
 			}
 			for _, ask := range event.Asks {
-				replaceAsk(&ask, depthSnapshot)
+				replaceAsk(&ask, asks)
 			}
-			displayOrderBook(depthSnapshot)
+			displayOrderBook(bids, asks)
 		}
 	}
 	errHandler := func(err error) {
