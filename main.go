@@ -82,9 +82,10 @@ func main() {
 		asks[ask.Price] = ask.Quantity
 	}
 
+	lastUpdateID := depthSnapshot.LastUpdateID
 	wsDepthHandler := func(event *binance.WsDepthEvent) {
 
-		if event.LastUpdateID > depthSnapshot.LastUpdateID {
+		if (event.LastUpdateID > lastUpdateID) && (event.FirstUpdateID == (lastUpdateID + 1)) {
 
 			for _, bid := range event.Bids {
 				replaceBid(&bid, bids)
@@ -94,6 +95,7 @@ func main() {
 			}
 			displayOrderBook(bids, asks)
 		}
+		lastUpdateID = event.LastUpdateID
 	}
 	errHandler := func(err error) {
 		fmt.Println(err)
