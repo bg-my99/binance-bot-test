@@ -4,35 +4,51 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strconv"
 	"time"
 
 	"github.com/adshao/go-binance/v2"
+	"github.com/adshao/go-binance/v2/common"
 
 	"binance-bot-test/config"
 )
 
-func replaceBid(newBid *binance.Bid, bids map[string]string) {
+type FloatPriceLevel struct {
+	PriceLevel common.PriceLevel
+	Price      float64
+	Quantity   float64
+}
 
-	f, _ := strconv.ParseFloat(newBid.Quantity, 64)
-	if f == 0.0 {
-		delete(bids, newBid.Price)
+func replaceBid(newBid *binance.Bid, bids map[string]FloatPriceLevel) {
+
+	price, quantity, err := newBid.Parse()
+	if err != nil {
+		fmt.Printf("Error parsing bid: %s\n", err)
 	} else {
-		bids[newBid.Price] = newBid.Quantity
+
+		if quantity == 0.0 {
+			delete(bids, newBid.Price)
+		} else {
+			bids[newBid.Price] = FloatPriceLevel{*newBid, price, quantity}
+		}
 	}
 }
 
-func replaceAsk(newAsk *binance.Ask, asks map[string]string) {
+func replaceAsk(newAsk *binance.Ask, asks map[string]FloatPriceLevel) {
 
-	f, _ := strconv.ParseFloat(newAsk.Quantity, 64)
-	if f == 0.0 {
-		delete(asks, newAsk.Price)
+	price, quantity, err := newAsk.Parse()
+	if err != nil {
+		fmt.Printf("Error parsing bid: %s\n", err)
 	} else {
-		asks[newAsk.Price] = newAsk.Quantity
+
+		if quantity == 0.0 {
+			delete(asks, newAsk.Price)
+		} else {
+			asks[newAsk.Price] = FloatPriceLevel{*newAsk, price, quantity}
+		}
 	}
 }
 
-func displayOrderBook(bids map[string]string, asks map[string]string) {
+func displayOrderBook(bids map[string]FloatPriceLevel, asks map[string]FloatPriceLevel) {
 
 	fmt.Print("\033[H\033[2J")
 
@@ -72,14 +88,26 @@ func main() {
 	symbol := "LTCBTC"
 	depthSnapshot, err := client.NewDepthService().Symbol(symbol).Limit(1000).Do(context.Background())
 
-	bids := map[string]string{}
+	bids := map[string]FloatPriceLevel{}
 	for _, bid := range depthSnapshot.Bids {
-		bids[bid.Price] = bid.Quantity
+
+		price, quantity, err := bid.Parse()
+		if err != nil {
+			fmt.Printf("Error parsing bid: %s\n", err)
+		} else {
+			bids[bid.Price] = FloatPriceLevel{bid, price, quantity}
+		}
 	}
 
-	asks := map[string]string{}
+	asks := map[string]FloatPriceLevel{}
 	for _, ask := range depthSnapshot.Asks {
-		asks[ask.Price] = ask.Quantity
+
+		price, quantity, err := ask.Parse()
+		if err != nil {
+			fmt.Printf("Error parsing ask: %s\n", err)
+		} else {
+			asks[ask.Price] = FloatPriceLevel{ask, price, quantity}
+		}
 	}
 
 	lastUpdateID := depthSnapshot.LastUpdateID
