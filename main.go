@@ -3,57 +3,13 @@ package main
 import (
 	"context"
 	"fmt"
-	"sort"
-	"strconv"
-	"time"
 
 	"github.com/adshao/go-binance/v2"
 
 	"binance-bot-test/config"
+	"binance-bot-test/order-book"
 )
 
-func replaceBid(newBid *binance.Bid, bids map[string]string) {
-
-	f, _ := strconv.ParseFloat(newBid.Quantity, 64)
-	if f == 0.0 {
-		delete(bids, newBid.Price)
-	} else {
-		bids[newBid.Price] = newBid.Quantity
-	}
-}
-
-func replaceAsk(newAsk *binance.Ask, asks map[string]string) {
-
-	f, _ := strconv.ParseFloat(newAsk.Quantity, 64)
-	if f == 0.0 {
-		delete(asks, newAsk.Price)
-	} else {
-		asks[newAsk.Price] = newAsk.Quantity
-	}
-}
-
-func displayOrderBook(bids map[string]string, asks map[string]string) {
-
-	fmt.Print("\033[H\033[2J")
-
-	bidsSorted := make([]string, 0)
-	for k, _ := range bids {
-		bidsSorted = append(bidsSorted, k)
-	}
-	sort.Strings(bidsSorted)
-
-	asksSorted := make([]string, 0)
-	for k, _ := range asks {
-		asksSorted = append(asksSorted, k)
-	}
-	sort.Strings(asksSorted)
-
-	b := len(bidsSorted) - 1
-	for row := 0; row < 30; row++ {
-		fmt.Printf("%s (%s)\t %s (%s)\n", bidsSorted[b], bids[bidsSorted[b]], asksSorted[row], asks[asksSorted[row]])
-		b--
-	}
-}
 
 func main() {
 
@@ -72,44 +28,10 @@ func main() {
 	symbol := "LTCBTC"
 	depthSnapshot, err := client.NewDepthService().Symbol(symbol).Limit(1000).Do(context.Background())
 
-	bids := map[string]string{}
-	for _, bid := range depthSnapshot.Bids {
-		bids[bid.Price] = bid.Quantity
-	}
-
-	asks := map[string]string{}
-	for _, ask := range depthSnapshot.Asks {
-		asks[ask.Price] = ask.Quantity
-	}
-
-	lastUpdateID := depthSnapshot.LastUpdateID
-	wsDepthHandler := func(event *binance.WsDepthEvent) {
-
-		if (event.LastUpdateID > lastUpdateID) && (event.FirstUpdateID == (lastUpdateID + 1)) {
-
-			for _, bid := range event.Bids {
-				replaceBid(&bid, bids)
-			}
-			for _, ask := range event.Asks {
-				replaceAsk(&ask, asks)
-			}
-			displayOrderBook(bids, asks)
-		}
-		lastUpdateID = event.LastUpdateID
-	}
-	errHandler := func(err error) {
-		fmt.Println(err)
-	}
-	doneC, stopC, err := binance.WsDepthServe(symbol, wsDepthHandler, errHandler)
 	if err != nil {
-		fmt.Println(err)
-		return
+		fmt.Printf("Error requesting depthSnapshot: %s\n", err)
+	} else {
+		orderbook.Initialise(depthSnapshot)
+		go orderbook.Update(depthSnapshot, symbol)
 	}
-	// use stopC to exit
-	go func() {
-		time.Sleep(50 * time.Second)
-		stopC <- struct{}{}
-	}()
-	// remove this if you do not want to be blocked here
-	<-doneC
 }
