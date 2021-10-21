@@ -15,7 +15,7 @@ type FloatPriceLevel struct {
 	Quantity   float64
 }
 
-var(
+var (
 	bids = map[string]FloatPriceLevel{}
 	asks = map[string]FloatPriceLevel{}
 )

@@ -10,7 +10,6 @@ import (
 	"binance-bot-test/order-book"
 )
 
-
 func main() {
 
 	var cfg config.Config
