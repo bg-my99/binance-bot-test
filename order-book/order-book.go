@@ -97,7 +97,7 @@ func (o *OrderBook) Display() {
 
 	b := len(bidsSorted) - 1
 	for row := 0; row < 30; row++ {
-		fmt.Printf("%s (%s)\t %s (%s)\n", bidsSorted[b], o.bids[bidsSorted[b]], asksSorted[row], o.asks[asksSorted[row]])
+		fmt.Printf("%s (%v)\t %s (%v)\n", bidsSorted[b], o.bids[bidsSorted[b]], asksSorted[row], o.asks[asksSorted[row]])
 		b--
 	}
 }
