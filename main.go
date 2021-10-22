@@ -32,7 +32,7 @@ func main() {
 	} else {
 		ob := orderbook.OrderBook{}
 
-		ob.Initialise(depthSnapshot)
-		ob.Update(symbol)
+		ob.Initialise(depthSnapshot, symbol)
+		ob.Update()
 	}
 }

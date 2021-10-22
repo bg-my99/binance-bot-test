@@ -16,6 +16,7 @@ type FloatPriceLevel struct {
 }
 
 type OrderBook struct {
+	symbol string
 	bids map[string]FloatPriceLevel
 	asks map[string]FloatPriceLevel
 
@@ -52,7 +53,8 @@ func (o *OrderBook) replaceAsk(newAsk *binance.Ask) {
 	}
 }
 
-func (o *OrderBook) Initialise(depthSnapshot *binance.DepthResponse) {
+func (o *OrderBook) Initialise(depthSnapshot *binance.DepthResponse, symbol string) {
+	o.symbol = symbol
 	o.bids = map[string]FloatPriceLevel{}
 	for _, bid := range depthSnapshot.Bids {
 
@@ -100,7 +102,7 @@ func (o *OrderBook) Display() {
 	}
 }
 
-func (o *OrderBook) Update(symbol string) {
+func (o *OrderBook) Update() {
 	lastUpdateID := o.depthSnapshot.LastUpdateID
 	wsDepthHandler := func(event *binance.WsDepthEvent) {
 
@@ -119,7 +121,7 @@ func (o *OrderBook) Update(symbol string) {
 	errHandler := func(err error) {
 		fmt.Println(err)
 	}
-	doneC, stopC, err := binance.WsDepthServe(symbol, wsDepthHandler, errHandler)
+	doneC, stopC, err := binance.WsDepthServe(o.symbol, wsDepthHandler, errHandler)
 	if err != nil {
 		fmt.Println(err)
 		return
