@@ -30,7 +30,9 @@ func main() {
 	if err != nil {
 		fmt.Printf("Error requesting depthSnapshot: %s\n", err)
 	} else {
-		orderbook.Initialise(depthSnapshot)
-		orderbook.Update(depthSnapshot, symbol)
+		ob := orderbook.OrderBook{}
+
+		ob.Initialise(depthSnapshot)
+		ob.Update(symbol)
 	}
 }
