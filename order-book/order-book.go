@@ -15,12 +15,15 @@ type FloatPriceLevel struct {
 	Quantity   float64
 }
 
-var (
-	bids = map[string]FloatPriceLevel{}
-	asks = map[string]FloatPriceLevel{}
-)
+type OrderBook struct {
+	symbol string
+	bids map[string]FloatPriceLevel
+	asks map[string]FloatPriceLevel
 
-func replaceBid(newBid *binance.Bid, bids map[string]FloatPriceLevel) {
+	depthSnapshot *binance.DepthResponse
+}
+
+func (o *OrderBook) replaceBid(newBid *binance.Bid) {
 
 	price, quantity, err := newBid.Parse()
 	if err != nil {
@@ -28,14 +31,14 @@ func replaceBid(newBid *binance.Bid, bids map[string]FloatPriceLevel) {
 	} else {
 
 		if quantity == 0.0 {
-			delete(bids, newBid.Price)
+			delete(o.bids, newBid.Price)
 		} else {
-			bids[newBid.Price] = FloatPriceLevel{*newBid, price, quantity}
+			o.bids[newBid.Price] = FloatPriceLevel{*newBid, price, quantity}
 		}
 	}
 }
 
-func replaceAsk(newAsk *binance.Ask, asks map[string]FloatPriceLevel) {
+func (o *OrderBook) replaceAsk(newAsk *binance.Ask) {
 
 	price, quantity, err := newAsk.Parse()
 	if err != nil {
@@ -43,78 +46,82 @@ func replaceAsk(newAsk *binance.Ask, asks map[string]FloatPriceLevel) {
 	} else {
 
 		if quantity == 0.0 {
-			delete(asks, newAsk.Price)
+			delete(o.asks, newAsk.Price)
 		} else {
-			asks[newAsk.Price] = FloatPriceLevel{*newAsk, price, quantity}
+			o.asks[newAsk.Price] = FloatPriceLevel{*newAsk, price, quantity}
 		}
 	}
 }
 
-func Initialise(depthSnapshot *binance.DepthResponse) {
+func (o *OrderBook) Initialise(depthSnapshot *binance.DepthResponse, symbol string) {
+	o.symbol = symbol
+	o.bids = map[string]FloatPriceLevel{}
 	for _, bid := range depthSnapshot.Bids {
 
 		price, quantity, err := bid.Parse()
 		if err != nil {
 			fmt.Printf("Error parsing bid: %s\n", err)
 		} else {
-			bids[bid.Price] = FloatPriceLevel{bid, price, quantity}
+			o.bids[bid.Price] = FloatPriceLevel{bid, price, quantity}
 		}
 	}
 
+	o.asks = map[string]FloatPriceLevel{}
 	for _, ask := range depthSnapshot.Asks {
 
 		price, quantity, err := ask.Parse()
 		if err != nil {
 			fmt.Printf("Error parsing ask: %s\n", err)
 		} else {
-			asks[ask.Price] = FloatPriceLevel{ask, price, quantity}
+			o.asks[ask.Price] = FloatPriceLevel{ask, price, quantity}
 		}
 	}
+	o.depthSnapshot = depthSnapshot
 }
 
-func Display(bids map[string]FloatPriceLevel, asks map[string]FloatPriceLevel) {
+func (o *OrderBook) Display() {
 
 	fmt.Print("\033[H\033[2J")
 
 	bidsSorted := make([]string, 0)
-	for k, _ := range bids {
+	for k, _ := range o.bids {
 		bidsSorted = append(bidsSorted, k)
 	}
 	sort.Strings(bidsSorted)
 
 	asksSorted := make([]string, 0)
-	for k, _ := range asks {
+	for k, _ := range o.asks {
 		asksSorted = append(asksSorted, k)
 	}
 	sort.Strings(asksSorted)
 
 	b := len(bidsSorted) - 1
 	for row := 0; row < 30; row++ {
-		fmt.Printf("%s (%s)\t %s (%s)\n", bidsSorted[b], bids[bidsSorted[b]], asksSorted[row], asks[asksSorted[row]])
+		fmt.Printf("%s (%v)\t %s (%v)\n", bidsSorted[b], o.bids[bidsSorted[b]], asksSorted[row], o.asks[asksSorted[row]])
 		b--
 	}
 }
 
-func Update(depthSnapshot *binance.DepthResponse, symbol string) {
-	lastUpdateID := depthSnapshot.LastUpdateID
+func (o *OrderBook) Update() {
+	lastUpdateID := o.depthSnapshot.LastUpdateID
 	wsDepthHandler := func(event *binance.WsDepthEvent) {
 
 		if (event.LastUpdateID > lastUpdateID) && (event.FirstUpdateID == (lastUpdateID + 1)) {
 
 			for _, bid := range event.Bids {
-				replaceBid(&bid, bids)
+				o.replaceBid(&bid)
 			}
 			for _, ask := range event.Asks {
-				replaceAsk(&ask, asks)
+				o.replaceAsk(&ask)
 			}
-			Display(bids, asks)
+			o.Display()
 		}
 		lastUpdateID = event.LastUpdateID
 	}
 	errHandler := func(err error) {
 		fmt.Println(err)
 	}
-	doneC, stopC, err := binance.WsDepthServe(symbol, wsDepthHandler, errHandler)
+	doneC, stopC, err := binance.WsDepthServe(o.symbol, wsDepthHandler, errHandler)
 	if err != nil {
 		fmt.Println(err)
 		return

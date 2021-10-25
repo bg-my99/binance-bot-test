@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/adshao/go-binance/v2"
-	"github.com/adshao/go-binance/v2/common"
 
 	"binance-bot-test/config"
 	"binance-bot-test/order-book"
@@ -31,7 +30,9 @@ func main() {
 	if err != nil {
 		fmt.Printf("Error requesting depthSnapshot: %s\n", err)
 	} else {
-		orderbook.Initialise(depthSnapshot)
-		orderbook.Update(depthSnapshot, symbol)
+		ob := orderbook.OrderBook{}
+
+		ob.Initialise(depthSnapshot, symbol)
+		ob.Update()
 	}
 }
