@@ -134,7 +134,17 @@ func main() {
 	fmt.Printf("Connecting to %s\n", whichNet)
 	binance.UseTestnet = cfg.UseTestnet
 
-	trades := getTrades()
+	var trades []binance.AggTrade
+	if cfg.TradesSource == "binance" {
+		trades = getTrades()
+		if cfg.WriteTrades {
+			file, _ := json.MarshalIndent(trades, "", " ")
+			_ = ioutil.WriteFile("trades.json", file, 0644)
+		}
+	} else if cfg.TradesSource == "file" {
+		file, _ := ioutil.ReadFile("trades.json")
+		_ = json.Unmarshal([]byte(file), &trades)
+	}
 
 	p := plot.New()
 	p.Title.Text = "Plotutil example"
