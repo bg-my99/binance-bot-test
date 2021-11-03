@@ -13,7 +13,9 @@ type Config struct {
 		ApiKey    string `envconfig:"API_KEY"`
 		SecretKey string `envconfig:"SECRET_KEY"`
 	}
-	UseTestnet bool `yaml:"useTestNet"`
+	UseTestnet   bool   `yaml:"useTestNet"`
+	TradesSource string `yaml:"tradesSource"`
+	WriteTrades  bool   `yaml:"writeTrades"`
 }
 
 func ReadEnv(cfg *Config) {
