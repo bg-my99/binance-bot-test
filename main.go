@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/adshao/go-binance/v2"
+	"github.com/pplcc/plotext/custplotter"
 	"gonum.org/v1/plot"
 	"gonum.org/v1/plot/plotter"
 	"gonum.org/v1/plot/vg"
@@ -151,7 +152,7 @@ func main() {
 	xticks := plot.TimeTicks{Format: "2006-01-02\n15:04"}
 	p.X.Tick.Marker = xticks
 
-	pts := candles.GetSortedCandles()
+	pts, hlcvs := candles.GetSortedCandles()
 	l, err := plotter.NewLine(pts)
 	if err != nil {
 		panic(err)
@@ -192,6 +193,13 @@ func main() {
 	lb.LineStyle.Width = vg.Points(1)
 	lb.LineStyle.Color = color.RGBA{B: 200, A: 255}
 	p.Add(lb)
+
+	// Add candlesticks
+	bars, err := custplotter.NewCandlesticks(hlcvs)
+	if err != nil {
+		panic(err)
+	}
+	p.Add(bars)
 
 	// Save the plot to a PNG file.
 	if err := p.Save(64*vg.Inch, 16*vg.Inch, "points.png"); err != nil {
