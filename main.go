@@ -16,6 +16,7 @@ import (
 
 	"binance-bot-test/calcs"
 	"binance-bot-test/config"
+	candles "binance-bot-test/storage"
 )
 
 const numPoints = 20
@@ -136,36 +137,64 @@ func main() {
 		_ = json.Unmarshal([]byte(file), &trades)
 	}
 
+	candles := candles.Candles{}
+	candles.Init(int64((time.Second * 300) / time.Millisecond))
+
+	for _, trade := range trades {
+		candles.AddTrade(&trade)
+	}
 	p := plot.New()
 	p.Title.Text = "Plotutil example"
 	p.X.Label.Text = "X"
 	p.Y.Label.Text = "Y"
 
-	pts := plotter.XYs{}
+	xticks := plot.TimeTicks{Format: "2006-01-02\n15:04"}
+	p.X.Tick.Marker = xticks
 
-	for _, trade := range trades {
-		y, _ := strconv.ParseFloat(trade.Price, 64)
-		pts = append(pts, plotter.XY{X: float64(trade.Timestamp), Y: y})
-	}
+	pts := candles.GetSortedCandles()
 	l, err := plotter.NewLine(pts)
 	if err != nil {
 		panic(err)
 	}
 	l.LineStyle.Width = vg.Points(1)
-	l.LineStyle.Color = color.RGBA{B: 255, A: 255}
-	p.Add(l)
+	l.LineStyle.Color = color.RGBA{R: 255, A: 255}
+	//p.Add(l)
 
-	movingAverage := getMovingAverage(pts)
+	movingAverage := calcs.GetMovingAverage(pts, numPoints)
 	m, err := plotter.NewLine(movingAverage)
 	if err != nil {
 		panic(err)
 	}
 	m.LineStyle.Width = vg.Points(1)
-	m.LineStyle.Color = color.RGBA{R: 200, A: 128}
+	m.LineStyle.Color = color.RGBA{R: 200, A: 255}
 	p.Add(m)
 
+	standardDeviation := calcs.GetStandardDeviation(pts, movingAverage, numPoints)
+
+	upperBollingerBand := plotter.XYs{}
+	lowerBollingerBand := plotter.XYs{}
+	for i, sd := range standardDeviation {
+		upperBollingerBand = append(upperBollingerBand, plotter.XY{X: sd.X, Y: movingAverage[i].Y + (2 * sd.Y)})
+		lowerBollingerBand = append(lowerBollingerBand, plotter.XY{X: sd.X, Y: movingAverage[i].Y - (2 * sd.Y)})
+	}
+	ub, err := plotter.NewLine(upperBollingerBand)
+	if err != nil {
+		panic(err)
+	}
+	ub.LineStyle.Width = vg.Points(1)
+	ub.LineStyle.Color = color.RGBA{G: 200, A: 255}
+	p.Add(ub)
+
+	lb, err := plotter.NewLine(lowerBollingerBand)
+	if err != nil {
+		panic(err)
+	}
+	lb.LineStyle.Width = vg.Points(1)
+	lb.LineStyle.Color = color.RGBA{B: 200, A: 255}
+	p.Add(lb)
+
 	// Save the plot to a PNG file.
-	if err := p.Save(32*vg.Inch, 16*vg.Inch, "points.png"); err != nil {
+	if err := p.Save(64*vg.Inch, 16*vg.Inch, "points.png"); err != nil {
 		panic(err)
 	}
 }
