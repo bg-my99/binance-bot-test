@@ -7,7 +7,7 @@ import (
 	"github.com/adshao/go-binance/v2"
 )
 
-func TestCandles1(t *testing.T) {
+func TestCandlesTimePeriod(t *testing.T) {
 	var candles = Candles{}
 	candles.Init(int64(time.Second * 300))
 
@@ -19,5 +19,24 @@ func TestCandles1(t *testing.T) {
 
 	if len(candles.candles) != 2 {
 		t.Errorf("Expected 2 items in candles.candles, got %d\n", len(candles.candles))
+	}
+}
+
+func TestCandlesAverage(t *testing.T) {
+	var candles = Candles{}
+	candles.Init(int64(time.Second * 300))
+
+	tm := time.Now().UnixNano() / int64(time.Millisecond)
+
+	candles.AddTrade(&binance.AggTrade{Price: "20", Quantity: "15", Timestamp: tm})
+	candles.AddTrade(&binance.AggTrade{Price: "40", Quantity: "25", Timestamp: tm})
+
+	if len(candles.candles) != 1 {
+		t.Errorf("Expected single candle in candles.candles, got %d\n", len(candles.candles))
+	}
+	for _, candle := range candles.candles {
+		if candle.WeightedAverage != 32.5 {
+			t.Errorf("Weighted Average should be 32.5, got %f\n", candle.WeightedAverage)
+		}
 	}
 }
