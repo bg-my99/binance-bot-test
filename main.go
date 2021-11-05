@@ -64,7 +64,6 @@ func getTrades() []binance.AggTrade {
 	end_time := yesterday.AddDate(0, 0, 1).UnixNano() / int64(time.Millisecond)
 
 	trades := []binance.AggTrade{}
-	tradesByTimestamp := make(map[int64]binance.AggTrade)
 
 	for current_time < end_time {
 		req, err := http.NewRequest("GET", "https://api.binance.com/api/v3/aggTrades", nil)
@@ -102,14 +101,7 @@ func getTrades() []binance.AggTrade {
 		}
 
 		for _, trade := range res {
-			ts := trade.Timestamp / int64(time.Microsecond)
-			if _, exists := tradesByTimestamp[ts]; exists {
-			} else {
-				modify := *trade
-				modify.Timestamp = ts
-				trades = append(trades, modify)
-				tradesByTimestamp[ts] = modify
-			}
+			trades = append(trades, *trade)
 		}
 		time.Sleep(500 * time.Millisecond)
 
