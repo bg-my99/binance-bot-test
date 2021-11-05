@@ -14,8 +14,11 @@ import (
 	"gonum.org/v1/plot/plotter"
 	"gonum.org/v1/plot/vg"
 
+	"binance-bot-test/calcs"
 	"binance-bot-test/config"
 )
+
+const numPoints = 20
 
 func getTrades() []binance.AggTrade {
 	req, err := http.NewRequest("GET", "https://api.binance.com/api/v3/aggTrades", nil)
@@ -61,6 +64,7 @@ func getTrades() []binance.AggTrade {
 	end_time := yesterday.AddDate(0, 0, 1).UnixNano() / int64(time.Millisecond)
 
 	trades := []binance.AggTrade{}
+	tradesByTimestamp := make(map[int64]binance.AggTrade)
 
 	for current_time < end_time {
 		req, err := http.NewRequest("GET", "https://api.binance.com/api/v3/aggTrades", nil)
@@ -98,7 +102,14 @@ func getTrades() []binance.AggTrade {
 		}
 
 		for _, trade := range res {
-			trades = append(trades, *trade)
+			ts := trade.Timestamp / int64(time.Microsecond)
+			if _, exists := tradesByTimestamp[ts]; exists {
+			} else {
+				modify := *trade
+				modify.Timestamp = ts
+				trades = append(trades, modify)
+				tradesByTimestamp[ts] = modify
+			}
 		}
 		time.Sleep(500 * time.Millisecond)
 
@@ -106,19 +117,6 @@ func getTrades() []binance.AggTrade {
 		current_time = res[len(res)-1].Timestamp
 	}
 	return trades
-}
-
-func getMovingAverage(pts plotter.XYs) plotter.XYs {
-	movingAverage := plotter.XYs{}
-	runningCount := 0.0
-	for i, trade := range pts {
-		if i >= 20 && i < (len(pts)-20) {
-			movingAverage = append(movingAverage, plotter.XY{X: trade.X, Y: runningCount / 20.0})
-			runningCount -= pts[i-20].Y
-		}
-		runningCount += trade.Y
-	}
-	return movingAverage
 }
 
 func main() {
