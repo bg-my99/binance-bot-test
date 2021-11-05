@@ -37,11 +37,14 @@ func (c *Candles) AddTrade(trade *binance.AggTrade) {
 	// Recalc values for candle
 	totalQuantity := 0.0
 	totalPrice := 0.0
-	for _, trade := range candle.trades {
-		price, _ := strconv.ParseFloat(trade.Price, 64)
-		quantity, _ := strconv.ParseInt(trade.Price, 10, 64)
+
+	for _, t := range candle.trades {
+		price, _ := strconv.ParseFloat(t.Price, 64)
+		quantity, _ := strconv.ParseInt(t.Quantity, 10, 64)
+
 		totalPrice += (price * float64(quantity))
 		totalQuantity += float64(quantity)
 	}
 	candle.WeightedAverage = totalPrice / totalQuantity
+	c.candles[index] = candle
 }
