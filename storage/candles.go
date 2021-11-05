@@ -3,6 +3,7 @@ package candles
 import (
 	"sort"
 	"strconv"
+	"time"
 
 	"github.com/adshao/go-binance/v2"
 	"gonum.org/v1/plot/plotter"
@@ -64,7 +65,7 @@ func (c *Candles) GetSortedCandles() plotter.XYs {
 	candlesToReturn := plotter.XYs{}
 	for _, k := range keys {
 		candle := c.candles[k]
-		candlesToReturn = append(candlesToReturn, plotter.XY{X: float64(k), Y: candle.WeightedAverage})
+		candlesToReturn = append(candlesToReturn, plotter.XY{X: float64(k) / float64(time.Microsecond), Y: candle.WeightedAverage})
 	}
 	return candlesToReturn
 }
