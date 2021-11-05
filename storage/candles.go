@@ -1,9 +1,11 @@
 package candles
 
 import (
+	"sort"
 	"strconv"
 
 	"github.com/adshao/go-binance/v2"
+	"gonum.org/v1/plot/plotter"
 )
 
 type Candle struct {
@@ -27,7 +29,7 @@ func (c *Candles) Init(timeStep int64) {
 }
 
 func (c *Candles) AddTrade(trade *binance.AggTrade) {
-	index := trade.Timestamp % c.timeStep
+	index := trade.Timestamp - (trade.Timestamp % c.timeStep)
 	if _, ok := c.candles[index]; !ok {
 		c.candles[index] = Candle{trades: make([]binance.AggTrade, 0)}
 	}
@@ -40,11 +42,29 @@ func (c *Candles) AddTrade(trade *binance.AggTrade) {
 
 	for _, t := range candle.trades {
 		price, _ := strconv.ParseFloat(t.Price, 64)
-		quantity, _ := strconv.ParseInt(t.Quantity, 10, 64)
+		quantity, _ := strconv.ParseFloat(t.Quantity, 64)
 
 		totalPrice += (price * float64(quantity))
 		totalQuantity += float64(quantity)
 	}
-	candle.WeightedAverage = totalPrice / totalQuantity
-	c.candles[index] = candle
+	if totalQuantity != 0.0 {
+		candle.WeightedAverage = totalPrice / totalQuantity
+		c.candles[index] = candle
+	}
+}
+
+func (c *Candles) GetSortedCandles() plotter.XYs {
+
+	keys := make([]int64, 0, len(c.candles))
+	for k := range c.candles {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i] <= keys[j] })
+
+	candlesToReturn := plotter.XYs{}
+	for _, k := range keys {
+		candle := c.candles[k]
+		candlesToReturn = append(candlesToReturn, plotter.XY{X: float64(k), Y: candle.WeightedAverage})
+	}
+	return candlesToReturn
 }
