@@ -216,6 +216,16 @@ func main() {
 	lb.LineStyle.Color = color.RGBA{B: 200, A: 255}
 	p.Add(lb)
 
+	tradePts := make(plotter.XYs, len(bot.Trades))
+	for i, t := range bot.Trades {
+		tradePts[i] = plotter.XY{X: float64(t.Timestamp) / float64(time.Microsecond), Y: t.Price}
+	}
+	lpTrades, _, err := plotter.NewLinePoints(tradePts)
+	if err != nil {
+		panic(err)
+	}
+	p.Add(lpTrades)
+
 	// Add candlesticks
 	bars, err := custplotter.NewCandlesticks(hlcvs)
 	if err != nil {
