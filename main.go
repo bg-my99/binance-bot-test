@@ -15,9 +15,11 @@ import (
 	"gonum.org/v1/plot/plotter"
 	"gonum.org/v1/plot/vg"
 
+	candles "binance-bot-test/storage"
+
+	"binance-bot-test/bots"
 	"binance-bot-test/calcs"
 	"binance-bot-test/config"
-	candles "binance-bot-test/storage"
 )
 
 const numPoints = 20
@@ -149,6 +151,14 @@ func main() {
 		file, _ := ioutil.ReadFile("trades.json")
 		_ = json.Unmarshal([]byte(file), &trades)
 	}
+
+	bot := bots.BollingerBot{}
+	bot.Init()
+
+	for _, trade := range trades {
+		bot.AddMarketTrade(&trade)
+	}
+	bot.DisplayPnL(100.0)
 
 	candles := candles.Candles{}
 	candles.Init(int64((time.Second * 300) / time.Millisecond))
