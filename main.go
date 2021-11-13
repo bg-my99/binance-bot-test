@@ -22,20 +22,20 @@ import (
 
 const numPoints = 20
 
-func getTrades() []binance.AggTrade {
+func getTrades(date time.Time) []binance.AggTrade {
 	req, err := http.NewRequest("GET", "https://api.binance.com/api/v3/aggTrades", nil)
 	if err != nil {
 		fmt.Print(err)
 		return nil
 	}
 
-	yesterday := time.Now().AddDate(0, 0, -1)
-	yesterday, _ = time.Parse("2006/01/02", yesterday.Format("2006/01/02"))
+	previousDay := date.AddDate(0, 0, -1)
+	previousDay, _ = time.Parse("2006/01/02", previousDay.Format("2006/01/02"))
 
 	q := req.URL.Query()
 	q.Add("symbol", "GALABUSD")
-	q.Add("startTime", strconv.FormatInt(yesterday.Add(time.Duration(-time.Minute)).UnixNano()/int64(time.Millisecond), 10))
-	q.Add("endTime", strconv.FormatInt(yesterday.UnixNano()/int64(time.Millisecond), 10))
+	q.Add("startTime", strconv.FormatInt(previousDay.Add(time.Duration(-time.Minute)).UnixNano()/int64(time.Millisecond), 10))
+	q.Add("endTime", strconv.FormatInt(previousDay.UnixNano()/int64(time.Millisecond), 10))
 	req.URL.RawQuery = q.Encode()
 
 	resp, err := http.Get(req.URL.String())
@@ -62,8 +62,10 @@ func getTrades() []binance.AggTrade {
 	}
 	fromID := res[0].AggTradeID
 
-	current_time := yesterday.UnixNano() / int64(time.Millisecond)
-	end_time := yesterday.AddDate(0, 0, 1).UnixNano() / int64(time.Millisecond)
+	fmt.Println("Fetching for " + previousDay.Format("2006-01-02"))
+
+	current_time := previousDay.UnixNano() / int64(time.Millisecond)
+	end_time := previousDay.AddDate(0, 0, 1).UnixNano() / int64(time.Millisecond)
 
 	trades := []binance.AggTrade{}
 
@@ -128,7 +130,17 @@ func main() {
 
 	var trades []binance.AggTrade
 	if cfg.TradesSource == "binance" {
-		trades = getTrades()
+		date := time.Now()
+		if cfg.FetchForDate != "" {
+			layout := "2006-01-02"
+			t, err := time.Parse(layout, cfg.FetchForDate)
+			if err != nil {
+				fmt.Println("Could not parse date from:" + cfg.FetchForDate)
+			} else {
+				date = t
+			}
+		}
+		trades = getTrades(date)
 		if cfg.WriteTrades {
 			file, _ := json.MarshalIndent(trades, "", " ")
 			_ = ioutil.WriteFile("trades.json", file, 0644)
