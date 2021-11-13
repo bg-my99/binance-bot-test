@@ -16,6 +16,7 @@ type Config struct {
 	UseTestnet   bool   `yaml:"useTestNet"`
 	TradesSource string `yaml:"tradesSource"`
 	WriteTrades  bool   `yaml:"writeTrades"`
+	FetchForDate string `envconfig:"FETCH_DATE"`
 }
 
 func ReadEnv(cfg *Config) {
