@@ -1,8 +1,8 @@
 package candles
 
 import (
+	"fmt"
 	"math"
-	"sort"
 	"strconv"
 	"time"
 
@@ -17,83 +17,74 @@ type Candle struct {
 	High            float64
 	Low             float64
 	Volume          float64
+	Timestamp       float64
 	WeightedAverage float64
 
 	trades []binance.AggTrade
 }
 
-type Candles struct {
-	timeStep int64
-	candles  map[int64]Candle
+func (c *Candle) WouldCloseWithTrade(trade *binance.AggTrade) bool {
+	return (trade.Timestamp-int64(c.Timestamp) > int64((time.Second*60)/time.Millisecond))
 }
 
-func (c *Candles) Init(timeStep int64) {
+func (c *Candle) AddTrade(trade *binance.AggTrade) bool {
+
+	price, _ := strconv.ParseFloat(trade.Price, 64)
+	quantity, _ := strconv.ParseFloat(trade.Quantity, 64)
+
+	if len(c.trades) == 0 {
+		c.Open = price
+		c.High = price
+		c.Low = price
+		c.Timestamp = float64(trade.Timestamp)
+	} else {
+		if trade.Timestamp < c.trades[len(c.trades)-1].Timestamp {
+			fmt.Println("Trade with dodgy timestamp")
+			return false
+		}
+		if c.WouldCloseWithTrade(trade) {
+			closePrice, _ := strconv.ParseFloat(trade.Price, 64)
+			c.Close = closePrice
+			return false
+		}
+		c.Low = math.Min(price, c.Low)
+		c.High = math.Max(price, c.High)
+	}
+	c.Volume += quantity
+	c.trades = append(c.trades, *trade)
+	return true
+}
+
+type Candles struct {
+	timeStep   int64
+	maxCandles int64
+	baseIndex  int64
+	candles    []*Candle
+}
+
+func (c *Candles) Init(maxCandles int64, timeStep int64) {
 	c.timeStep = timeStep
-	c.candles = make(map[int64]Candle)
+	c.maxCandles = maxCandles
 }
 
 func (c *Candles) AddTrade(trade *binance.AggTrade) {
 	index := trade.Timestamp - (trade.Timestamp % c.timeStep)
-	if _, ok := c.candles[index]; !ok {
-		c.candles[index] = Candle{trades: make([]binance.AggTrade, 0)}
+	if len(c.candles) == 0 {
+		c.baseIndex = index
 	}
-	var candle = c.candles[index]
-	candle.trades = append(c.candles[index].trades, *trade)
-
-	// Recalc values for candle
-	totalQuantity := 0.0
-	minPrice := math.Inf(1)
-	maxPrice := math.Inf(-1)
-	openTime := index + c.timeStep
-	openPrice := 0.0
-	closeTime := index - c.timeStep
-	closePrice := 0.0
-	totalPrice := 0.0
-
-	for _, t := range candle.trades {
-		price, _ := strconv.ParseFloat(t.Price, 64)
-		quantity, _ := strconv.ParseFloat(t.Quantity, 64)
-
-		if t.Timestamp > closeTime {
-			// new close price
-			closePrice = price
-			closeTime = t.Timestamp
-		}
-		if t.Timestamp < openTime {
-			// new open price
-			openPrice = price
-			openTime = t.Timestamp
-		}
-		minPrice = math.Min(price, minPrice)
-		maxPrice = math.Max(price, maxPrice)
-
-		totalPrice += (price * float64(quantity))
-		totalQuantity += float64(quantity)
+	candleIndex := (index - c.baseIndex) / c.timeStep
+	if candleIndex > int64(len(c.candles)-1) {
+		c.candles = append(c.candles, &Candle{Timestamp: float64(trade.Timestamp), trades: make([]binance.AggTrade, 0)})
 	}
-	if totalQuantity != 0.0 {
-		candle.Open = openPrice
-		candle.Close = closePrice
-		candle.High = maxPrice
-		candle.Low = minPrice
-		candle.Volume = totalQuantity
-		candle.WeightedAverage = totalPrice / totalQuantity
-		c.candles[index] = candle
-	}
+	c.candles[candleIndex].AddTrade(trade)
 }
 
 func (c *Candles) GetSortedCandles() (plotter.XYs, custplotter.TOHLCVs) {
 
-	keys := make([]int64, 0, len(c.candles))
-	for k := range c.candles {
-		keys = append(keys, k)
-	}
-	sort.Slice(keys, func(i, j int) bool { return keys[i] <= keys[j] })
-
 	candlesToReturn := plotter.XYs{}
-	candlesToReturn2 := make(custplotter.TOHLCVs, len(keys))
-	for i, k := range keys {
-		candle := c.candles[k]
-		t := float64(k) / float64(time.Microsecond)
+	candlesToReturn2 := make(custplotter.TOHLCVs, len(c.candles))
+	for i, candle := range c.candles {
+		t := float64(candle.Timestamp) / float64(time.Microsecond)
 		candlesToReturn = append(candlesToReturn, plotter.XY{X: t, Y: candle.WeightedAverage})
 
 		candlesToReturn2[i].T = t
@@ -104,4 +95,20 @@ func (c *Candles) GetSortedCandles() (plotter.XYs, custplotter.TOHLCVs) {
 		candlesToReturn2[i].V = candle.Volume
 	}
 	return candlesToReturn, candlesToReturn2
+}
+
+func GetHLCVs(candles []*Candle) custplotter.TOHLCVs {
+
+	hlcvs := make(custplotter.TOHLCVs, len(candles))
+	for i, candle := range candles {
+		t := float64(candle.Timestamp) / float64(time.Microsecond)
+
+		hlcvs[i].T = t
+		hlcvs[i].O = candle.Open
+		hlcvs[i].H = candle.High
+		hlcvs[i].L = candle.Low
+		hlcvs[i].C = candle.Close
+		hlcvs[i].V = candle.Volume
+	}
+	return hlcvs
 }
