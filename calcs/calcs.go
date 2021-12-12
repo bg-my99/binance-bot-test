@@ -6,6 +6,30 @@ import (
 	"gonum.org/v1/plot/plotter"
 )
 
+type MovingAverage struct {
+	periodSize uint64
+	periodVals []float64
+}
+
+func CreateMovingAverage(periodSize uint64) *MovingAverage {
+	return &MovingAverage{periodSize: periodSize}
+}
+
+func (m *MovingAverage) Get(price float64) (float64, bool) {
+	isValid := false
+	if len(m.periodVals) < int(m.periodSize) {
+		m.periodVals = append(m.periodVals, price)
+	} else {
+		m.periodVals = append(m.periodVals[1:], price)
+		isValid = true
+	}
+	ma := 0.0
+	for _, v := range m.periodVals {
+		ma += v
+	}
+	return (ma / float64(m.periodSize)), isValid
+}
+
 func CalcExpMovingAverages(price float64, currentEMA20 float64, currentEMA50 float64, currentEMA100 float64) (float64, float64, float64) {
 	eMA20Multiplier := (2.0 / (20.0 + 1.0))
 	eMA50Multiplier := (2.0 / (50.0 + 1.0))
