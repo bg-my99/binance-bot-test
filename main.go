@@ -3,22 +3,14 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"image/color"
 	"io/ioutil"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/adshao/go-binance/v2"
-	"github.com/pplcc/plotext/custplotter"
-	"gonum.org/v1/plot"
-	"gonum.org/v1/plot/plotter"
-	"gonum.org/v1/plot/vg"
-
-	candles "binance-bot-test/storage"
 
 	"binance-bot-test/bots"
-	"binance-bot-test/calcs"
 	"binance-bot-test/config"
 )
 
@@ -31,13 +23,14 @@ func getTrades(date time.Time) []binance.AggTrade {
 		return nil
 	}
 
-	previousDay := date.AddDate(0, 0, -1)
-	previousDay, _ = time.Parse("2006/01/02", previousDay.Format("2006/01/02"))
+	// Strip off the time
+	day, _ := time.Parse("2006/01/02", date.Format("2006/01/02"))
 
+	symbol := "BNBBUSD"
 	q := req.URL.Query()
-	q.Add("symbol", "GALABUSD")
-	q.Add("startTime", strconv.FormatInt(previousDay.Add(time.Duration(-time.Minute)).UnixNano()/int64(time.Millisecond), 10))
-	q.Add("endTime", strconv.FormatInt(previousDay.UnixNano()/int64(time.Millisecond), 10))
+	q.Add("symbol", symbol)
+	q.Add("startTime", strconv.FormatInt(day.Add(time.Duration(-time.Minute)).UnixNano()/int64(time.Millisecond), 10))
+	q.Add("endTime", strconv.FormatInt(day.UnixNano()/int64(time.Millisecond), 10))
 	req.URL.RawQuery = q.Encode()
 
 	resp, err := http.Get(req.URL.String())
@@ -64,29 +57,29 @@ func getTrades(date time.Time) []binance.AggTrade {
 	}
 	fromID := res[0].AggTradeID
 
-	fmt.Println("Fetching for " + previousDay.Format("2006-01-02"))
+	fmt.Println("Fetching for " + day.Format("2006-01-02"))
 
-	current_time := previousDay.UnixNano() / int64(time.Millisecond)
-	end_time := previousDay.AddDate(0, 0, 1).UnixNano() / int64(time.Millisecond)
+	current_time := day.UnixNano() / int64(time.Millisecond)
+	end_time := day.AddDate(0, 0, 1).UnixNano() / int64(time.Millisecond)
 
 	trades := []binance.AggTrade{}
 
 	for current_time < end_time {
 		req, err := http.NewRequest("GET", "https://api.binance.com/api/v3/aggTrades", nil)
 		if err != nil {
-			fmt.Print(err)
+			fmt.Print("NewRequest returned:", err)
 			return nil
 		}
 
 		q := req.URL.Query()
-		q.Add("symbol", "GALABUSD")
+		q.Add("symbol", symbol)
 		q.Add("limit", "1000")
 		q.Add("fromId", strconv.FormatInt(fromID, 10))
 		req.URL.RawQuery = q.Encode()
 
 		resp, err := http.Get(req.URL.String())
 		if err != nil {
-			fmt.Println(err)
+			fmt.Println("Get returned:", err)
 			return nil
 		}
 		if resp.StatusCode != 200 {
@@ -96,7 +89,7 @@ func getTrades(date time.Time) []binance.AggTrade {
 
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			fmt.Println(err)
+			fmt.Println("ReadAll returned:", err)
 			return nil
 		}
 		res := make([]*binance.AggTrade, 0)
