@@ -2,23 +2,6 @@ import React, { useState } from 'react';
 import Plot from 'react-plotly.js'
 
 /**
- * Create two arrays num length with random values from 0 to mul
- *
- * @param {*} num
- * @param {*} mul
- * @returns
- */
-function randomValues(num, mul) {
-  const arr = [];
-  const index = [];
-  for (let i = 0; i < num; i++) {
-    arr.push(Math.random() * mul)
-    index.push(i);
-  }
-  return {index, arr};
-}
-
-/**
  * Main application component
  *
  * @returns
@@ -28,7 +11,7 @@ function App() {
     fetch("http://localhost:8080/encode").then(function(response) {
       return response.json();
     }).then(function(data) {
-      var traces = Array()
+      var traces = []
       for (let line of Object.entries(data.linesByTimestamp["120000000000"].lines)) {
         var x = []
         var y = []
