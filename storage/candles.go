@@ -23,11 +23,12 @@ type Candle struct {
 	trades []binance.AggTrade
 }
 
-func (c *Candle) WouldCloseWithTrade(trade *binance.AggTrade) bool {
-	return (trade.Timestamp-int64(c.Timestamp) > int64((time.Second*60)/time.Millisecond))
+func (c *Candle) WouldCloseWithTrade(trade *binance.AggTrade, timestep time.Duration) bool {
+	//return (trade.Timestamp-int64(c.Timestamp) > int64((time.Second*600)/time.Millisecond))
+	return (trade.Timestamp-int64(c.Timestamp) > int64(timestep/time.Millisecond))
 }
 
-func (c *Candle) AddTrade(trade *binance.AggTrade) bool {
+func (c *Candle) AddTrade(trade *binance.AggTrade, timestep time.Duration) bool {
 
 	price, _ := strconv.ParseFloat(trade.Price, 64)
 	quantity, _ := strconv.ParseFloat(trade.Quantity, 64)
@@ -42,7 +43,7 @@ func (c *Candle) AddTrade(trade *binance.AggTrade) bool {
 			fmt.Println("Trade with dodgy timestamp")
 			return false
 		}
-		if c.WouldCloseWithTrade(trade) {
+		if c.WouldCloseWithTrade(trade, timestep) {
 			closePrice, _ := strconv.ParseFloat(trade.Price, 64)
 			c.Close = closePrice
 			return false
@@ -67,7 +68,7 @@ func (c *Candles) Init(maxCandles int64, timeStep int64) {
 	c.maxCandles = maxCandles
 }
 
-func (c *Candles) AddTrade(trade *binance.AggTrade) {
+/*func (c *Candles) AddTrade(trade *binance.AggTrade) {
 	index := trade.Timestamp - (trade.Timestamp % c.timeStep)
 	if len(c.candles) == 0 {
 		c.baseIndex = index
@@ -76,8 +77,8 @@ func (c *Candles) AddTrade(trade *binance.AggTrade) {
 	if candleIndex > int64(len(c.candles)-1) {
 		c.candles = append(c.candles, &Candle{Timestamp: float64(trade.Timestamp), trades: make([]binance.AggTrade, 0)})
 	}
-	c.candles[candleIndex].AddTrade(trade)
-}
+	c.candles[candleIndex].AddTrade(trade, timestep)
+}*/
 
 func (c *Candles) GetSortedCandles() (plotter.XYs, custplotter.TOHLCVs) {
 
