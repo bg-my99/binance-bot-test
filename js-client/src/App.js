@@ -9,10 +9,18 @@ import Select from "react-select";
  * @returns
  */
 function App() {
+  const [timesteps, setTimesteps] = useState()
+
   const [traces, setTraces] = useState(function() {
     fetch("http://localhost:8080/encode").then(function(response) {
       return response.json();
     }).then(function(data) {
+      var timesteps = []
+      for (let step of Object.entries(data.linesByTimestamp)) {
+        timesteps.push({value: step[0], label: step[0]})
+      }
+      setTimesteps(timesteps)
+
       var traces = []
       for (let line of Object.entries(data.linesByTimestamp["120000000000"].lines)) {
         var x = []
@@ -37,12 +45,6 @@ function App() {
   });
   const [selectedOption, setSelectedOption] = useState()
 
-  const icecreams = [
-    { value: 'chocolate', label: 'Chocolate' },
-    { value: 'strawberry', label: 'Strawberry' },
-    { value: 'vanilla', label: 'Vanilla' },
-  ];
-
   const onOptionChange = useCallback((option) => setSelectedOption(option), []);
 
   return (
@@ -50,7 +52,7 @@ function App() {
       <Select
         value={selectedOption}
         onChange={onOptionChange}
-        options={icecreams}
+        options={timesteps}
       />
       <Plot
         data={traces}
