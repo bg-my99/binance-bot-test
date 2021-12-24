@@ -49,12 +49,25 @@ func (c *Chart) Init() {
 
 	xticks := plot.TimeTicks{Format: "2006-01-02\n15:04"}
 	c.plot.X.Tick.Marker = xticks
-	c.rsi = &ChartLine{}
 }
 
 func (c *Chart) AddLine(r uint8, g uint8, b uint8, width int) *ChartLine {
 	newChartLine := &ChartLine{width: width, color: color.RGBA{R: r, G: g, B: b, A: 255}}
 	c.lines = append(c.lines, newChartLine)
+
+	newChartLine.PointsChannel = make(chan plotter.XY)
+
+	go func(cl *ChartLine) {
+		for point := range newChartLine.PointsChannel {
+			cl.points = append(newChartLine.points, point)
+		}
+	}(newChartLine)
+	return newChartLine
+}
+
+func (c *Chart) AddRsi() *ChartLine {
+	newChartLine := &ChartLine{width: 2, color: color.RGBA{R: 100, G: 200, B: 250, A: 255}}
+	c.rsi = newChartLine
 
 	newChartLine.PointsChannel = make(chan plotter.XY)
 
@@ -131,7 +144,7 @@ func (c *Chart) Output() {
 			panic(err)
 		}
 
-		img := vgimg.New(192*vg.Inch, 48*vg.Inch)
+		img := vgimg.New(192*vg.Inch, 32*vg.Inch)
 		dc := draw.New(img)
 
 		plots := make([][]*plot.Plot, 2)
@@ -145,6 +158,17 @@ func (c *Chart) Output() {
 
 		xticks := plot.TimeTicks{Format: "2006-01-02\n15:04"}
 		plt.X.Tick.Marker = xticks
+
+		close(c.rsi.PointsChannel)
+
+		m, err := plotter.NewLine(c.rsi.points)
+		if err != nil {
+			panic(err)
+		}
+		m.LineStyle.Width = vg.Points(float64(c.rsi.width))
+		m.LineStyle.Color = c.rsi.color
+		plt.Add(m)
+
 		plots[1] = make([]*plot.Plot, 1)
 		plots[1][0] = plt
 
