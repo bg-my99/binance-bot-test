@@ -3,22 +3,14 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"image/color"
 	"io/ioutil"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/adshao/go-binance/v2"
-	"github.com/pplcc/plotext/custplotter"
-	"gonum.org/v1/plot"
-	"gonum.org/v1/plot/plotter"
-	"gonum.org/v1/plot/vg"
-
-	candles "binance-bot-test/storage"
 
 	"binance-bot-test/bots"
-	"binance-bot-test/calcs"
 	"binance-bot-test/config"
 )
 
@@ -31,13 +23,14 @@ func getTrades(date time.Time) []binance.AggTrade {
 		return nil
 	}
 
-	previousDay := date.AddDate(0, 0, -1)
-	previousDay, _ = time.Parse("2006/01/02", previousDay.Format("2006/01/02"))
+	// Strip off the time
+	day, _ := time.Parse("2006/01/02", date.Format("2006/01/02"))
 
+	symbol := "BNBBUSD"
 	q := req.URL.Query()
-	q.Add("symbol", "GALABUSD")
-	q.Add("startTime", strconv.FormatInt(previousDay.Add(time.Duration(-time.Minute)).UnixNano()/int64(time.Millisecond), 10))
-	q.Add("endTime", strconv.FormatInt(previousDay.UnixNano()/int64(time.Millisecond), 10))
+	q.Add("symbol", symbol)
+	q.Add("startTime", strconv.FormatInt(day.Add(time.Duration(-time.Minute)).UnixNano()/int64(time.Millisecond), 10))
+	q.Add("endTime", strconv.FormatInt(day.UnixNano()/int64(time.Millisecond), 10))
 	req.URL.RawQuery = q.Encode()
 
 	resp, err := http.Get(req.URL.String())
@@ -64,29 +57,29 @@ func getTrades(date time.Time) []binance.AggTrade {
 	}
 	fromID := res[0].AggTradeID
 
-	fmt.Println("Fetching for " + previousDay.Format("2006-01-02"))
+	fmt.Println("Fetching for " + day.Format("2006-01-02"))
 
-	current_time := previousDay.UnixNano() / int64(time.Millisecond)
-	end_time := previousDay.AddDate(0, 0, 1).UnixNano() / int64(time.Millisecond)
+	current_time := day.UnixNano() / int64(time.Millisecond)
+	end_time := day.AddDate(0, 0, 1).UnixNano() / int64(time.Millisecond)
 
 	trades := []binance.AggTrade{}
 
 	for current_time < end_time {
 		req, err := http.NewRequest("GET", "https://api.binance.com/api/v3/aggTrades", nil)
 		if err != nil {
-			fmt.Print(err)
+			fmt.Print("NewRequest returned:", err)
 			return nil
 		}
 
 		q := req.URL.Query()
-		q.Add("symbol", "GALABUSD")
+		q.Add("symbol", symbol)
 		q.Add("limit", "1000")
 		q.Add("fromId", strconv.FormatInt(fromID, 10))
 		req.URL.RawQuery = q.Encode()
 
 		resp, err := http.Get(req.URL.String())
 		if err != nil {
-			fmt.Println(err)
+			fmt.Println("Get returned:", err)
 			return nil
 		}
 		if resp.StatusCode != 200 {
@@ -96,7 +89,7 @@ func getTrades(date time.Time) []binance.AggTrade {
 
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			fmt.Println(err)
+			fmt.Println("ReadAll returned:", err)
 			return nil
 		}
 		res := make([]*binance.AggTrade, 0)
@@ -115,6 +108,23 @@ func getTrades(date time.Time) []binance.AggTrade {
 		current_time = res[len(res)-1].Timestamp
 	}
 	return trades
+}
+
+type ValuePoint struct {
+	RsiSell float64 `json:"rsiSell"`
+	PnL     float64 `json:"pnl"`
+}
+
+type ValueLine struct {
+	Points []ValuePoint `json:"points"`
+}
+
+type ValueLines struct {
+	Lines map[string]ValueLine `json:"lines"`
+}
+
+type RunResults struct {
+	LinesByTimestamp map[time.Duration]ValueLines `json:"linesByTimestamp"`
 }
 
 func main() {
@@ -148,93 +158,57 @@ func main() {
 			_ = ioutil.WriteFile("trades.json", file, 0644)
 		}
 	} else if cfg.TradesSource == "file" {
-		file, _ := ioutil.ReadFile("trades.json")
-		_ = json.Unmarshal([]byte(file), &trades)
+		filenames := []string{
+			/*"data/trades-2021-11-01.json", "data/trades-2021-11-02.json",
+			"data/trades-2021-11-03.json", "data/trades-2021-11-04.json",
+			"data/trades-2021-11-05.json", "data/trades-2021-11-06.json",
+			"data/trades-2021-11-07.json", "data/trades-2021-11-08.json",
+			"data/trades-2021-11-09.json", "data/trades-2021-11-10.json",
+			"data/trades-2021-11-11.json", "data/trades-2021-11-12.json",
+			"data/trades-2021-11-13.json", "data/trades-2021-11-14.json",
+			"data/trades-2021-11-15.json", "data/trades-2021-11-16.json",*/
+			"data/trades-2021-11-18.json", "data/trades-2021-11-19.json",
+			//"data/trades-2021-11-20.json", "data/trades-2021-11-21.json",
+			//"data/trades-2021-11-22.json", "data/trades-2021-11-23.json",
+		}
+		var tradesFromFile []binance.AggTrade
+		for _, filename := range filenames {
+			file, _ := ioutil.ReadFile(filename)
+			_ = json.Unmarshal([]byte(file), &tradesFromFile)
+			trades = append(trades, tradesFromFile...)
+		}
 	}
 
-	bot := bots.BollingerBot{}
-	bot.Init()
-
-	for _, trade := range trades {
-		bot.AddMarketTrade(&trade)
+	botrunner := bots.BotRunner{
+		TimeSteps:      []time.Duration{time.Second * 60, time.Second * 120, time.Second * 300, time.Second * 600, time.Second * 900},
+		RsiBuyPriceMin: 10.0, RsiBuyPriceMax: 40.0, RsiBuyPriceStep: 4.0,
+		RsiSellPriceMin: 60.0, RsiSellPriceMax: 90.0, RsiSellPriceStep: 5.0,
 	}
-	bot.DisplayPnL(100.0)
+	resultsChannel := make(chan bots.BotRunResult)
+	results := RunResults{LinesByTimestamp: make(map[time.Duration]ValueLines)}
 
-	candles := candles.Candles{}
-	candles.Init(int64((time.Second * 300) / time.Millisecond))
+	go func(chResults chan bots.BotRunResult) {
+		for result := range chResults {
+			//fmt.Printf("PnL for timestep %v, rsiB:%f, rsiS:%f:%f\n", result.Timestep, result.RsiBuy, result.RsiSell, result.PnL)
 
-	for _, trade := range trades {
-		candles.AddTrade(&trade)
+			if _, ok := results.LinesByTimestamp[result.Timestep]; !ok {
+				results.LinesByTimestamp[result.Timestep] = ValueLines{Lines: make(map[string]ValueLine)}
+			}
+			rsiAsStr := fmt.Sprintf("%f", result.RsiBuy)
+			if _, ok := results.LinesByTimestamp[result.Timestep].Lines[rsiAsStr]; !ok {
+				results.LinesByTimestamp[result.Timestep].Lines[rsiAsStr] = ValueLine{Points: make([]ValuePoint, 0)}
+			}
+			newPoints := append(results.LinesByTimestamp[result.Timestep].Lines[rsiAsStr].Points, ValuePoint{RsiSell: result.RsiSell, PnL: result.PnL})
+			results.LinesByTimestamp[result.Timestep].Lines[rsiAsStr] = ValueLine{Points: newPoints}
+		}
+	}(resultsChannel)
+
+	botrunner.Run(trades, resultsChannel)
+
+	prettyJSON, error := json.MarshalIndent(results, "", "\t")
+	if error != nil {
+		fmt.Println("JSON parse error: ", error)
+		return
 	}
-	p := plot.New()
-	p.Title.Text = "Plotutil example"
-	p.X.Label.Text = "X"
-	p.Y.Label.Text = "Y"
-
-	xticks := plot.TimeTicks{Format: "2006-01-02\n15:04"}
-	p.X.Tick.Marker = xticks
-
-	pts, hlcvs := candles.GetSortedCandles()
-	l, err := plotter.NewLine(pts)
-	if err != nil {
-		panic(err)
-	}
-	l.LineStyle.Width = vg.Points(1)
-	l.LineStyle.Color = color.RGBA{R: 255, A: 255}
-	//p.Add(l)
-
-	movingAverage := calcs.GetMovingAverage(pts, numPoints)
-	m, err := plotter.NewLine(movingAverage)
-	if err != nil {
-		panic(err)
-	}
-	m.LineStyle.Width = vg.Points(1)
-	m.LineStyle.Color = color.RGBA{R: 200, A: 255}
-	p.Add(m)
-
-	standardDeviation := calcs.GetStandardDeviation(pts, movingAverage, numPoints)
-
-	upperBollingerBand := plotter.XYs{}
-	lowerBollingerBand := plotter.XYs{}
-	for i, sd := range standardDeviation {
-		upperBollingerBand = append(upperBollingerBand, plotter.XY{X: sd.X, Y: movingAverage[i].Y + (2 * sd.Y)})
-		lowerBollingerBand = append(lowerBollingerBand, plotter.XY{X: sd.X, Y: movingAverage[i].Y - (2 * sd.Y)})
-	}
-	ub, err := plotter.NewLine(upperBollingerBand)
-	if err != nil {
-		panic(err)
-	}
-	ub.LineStyle.Width = vg.Points(1)
-	ub.LineStyle.Color = color.RGBA{G: 200, A: 255}
-	p.Add(ub)
-
-	lb, err := plotter.NewLine(lowerBollingerBand)
-	if err != nil {
-		panic(err)
-	}
-	lb.LineStyle.Width = vg.Points(1)
-	lb.LineStyle.Color = color.RGBA{B: 200, A: 255}
-	p.Add(lb)
-
-	tradePts := make(plotter.XYs, len(bot.Trades))
-	for i, t := range bot.Trades {
-		tradePts[i] = plotter.XY{X: float64(t.Timestamp) / float64(time.Microsecond), Y: t.Price}
-	}
-	lpTrades, _, err := plotter.NewLinePoints(tradePts)
-	if err != nil {
-		panic(err)
-	}
-	p.Add(lpTrades)
-
-	// Add candlesticks
-	bars, err := custplotter.NewCandlesticks(hlcvs)
-	if err != nil {
-		panic(err)
-	}
-	p.Add(bars)
-
-	// Save the plot to a PNG file.
-	if err := p.Save(64*vg.Inch, 16*vg.Inch, "points.png"); err != nil {
-		panic(err)
-	}
+	fmt.Println(string(prettyJSON))
 }

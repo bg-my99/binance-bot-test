@@ -13,7 +13,7 @@ import (
 )
 
 const numPoints = 20
-const stopLossPercent = 0.01
+const stopLossPercent = 0.015
 const minProfitPercent = 0.03
 
 type BollingerBot struct {
@@ -49,7 +49,7 @@ func (b *BollingerBot) AddMarketTrade(trade *binance.AggTrade) {
 		return
 	}
 
-	b.candles.AddTrade(trade)
+	//b.candles.AddTrade(trade, time.Second*600)
 
 	pts, _ := b.candles.GetSortedCandles()
 	movingAverage := calcs.GetMovingAverage(pts, numPoints)

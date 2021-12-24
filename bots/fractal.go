@@ -7,14 +7,20 @@ import (
 	"time"
 
 	"github.com/adshao/go-binance/v2"
+	"gonum.org/v1/gonum/floats"
 	"gonum.org/v1/plot/plotter"
 
+	"binance-bot-test/calcs"
 	"binance-bot-test/display"
 	candles "binance-bot-test/storage"
 )
 
 type FractalBot struct {
-	PnL           float64
+	PnL          float64
+	Timestep     time.Duration
+	RsiBuyLevel  float64
+	RsiSellLevel float64
+
 	inTrade       bool
 	buySignal     bool
 	entryPrice    float64
@@ -23,13 +29,15 @@ type FractalBot struct {
 	hitStopLoss   bool
 	allLinesValid bool
 
-	jawSMA5   []float64
-	teethSMA8 []float64
-	lipsSMA13 []float64
+	rsiGains   []float64
+	rsiLosses  []float64
+	rsiAvgGain float64
+	rsiAvgLoss float64
+	currentRsi float64
 
-	runningJawSMA5   float64
-	runningTeethSMA8 float64
-	runningLipsSMA13 float64
+	jawSMA5   *calcs.MovingAverage
+	teethSMA8 *calcs.MovingAverage
+	lipsSMA13 *calcs.MovingAverage
 
 	fractalTopCount   int64
 	runningTradeCount int64
@@ -37,17 +45,18 @@ type FractalBot struct {
 
 	candles []*candles.Candle
 
-	chart display.Chart
+	chart *display.Chart
 
 	jawLine      *display.ChartLine
 	teethLine    *display.ChartLine
 	buyBars      *display.ChartLine
 	sellBars     *display.ChartBar
 	lipsLine     *display.ChartLine
+	rsiLine      *display.ChartLine
 	chartCandles *display.ChartCandles
 }
 
-func (f *FractalBot) Init() {
+func (f *FractalBot) Init(writeChart bool) {
 
 	f.inTrade = false
 	f.fractalTopCount = 0
@@ -55,14 +64,26 @@ func (f *FractalBot) Init() {
 	f.hitStopLoss = false
 	f.allLinesValid = false
 
-	f.chart = display.Chart{}
-	f.chart.Init()
+	f.jawSMA5 = calcs.CreateMovingAverage(5)
+	f.teethSMA8 = calcs.CreateMovingAverage(8)
+	f.lipsSMA13 = calcs.CreateMovingAverage(13)
 
-	f.jawLine = f.chart.AddLine(255, 0, 0, 1)
-	f.teethLine = f.chart.AddLine(0, 255, 0, 1)
-	f.lipsLine = f.chart.AddLine(0, 0, 255, 1)
-	f.buyBars = f.chart.AddLine(0, 155, 155, 2)
-	f.chartCandles = f.chart.AddCandles()
+	f.rsiAvgGain = float64(math.Inf(1))
+	f.rsiAvgLoss = float64(math.Inf(1))
+	f.currentRsi = 100.0
+
+	if writeChart {
+		f.chart = &display.Chart{}
+		f.chart.Init()
+
+		f.jawLine = f.chart.AddLine(255, 0, 0, 1)
+		f.teethLine = f.chart.AddLine(0, 255, 0, 1)
+		f.lipsLine = f.chart.AddLine(0, 0, 255, 1)
+		f.buyBars = f.chart.AddLine(0, 155, 155, 2)
+		f.chartCandles = f.chart.AddCandles()
+
+		f.rsiLine = f.chart.AddRsi()
+	}
 }
 
 func (f *FractalBot) AddMarketTrade(trade *binance.AggTrade) {
@@ -75,33 +96,60 @@ func (f *FractalBot) AddMarketTrade(trade *binance.AggTrade) {
 
 	if f.allLinesValid {
 		if f.inTrade {
-			if price < f.stopLossPrice {
+			/*if price < f.stopLossPrice {
 				fmt.Printf("**Hit Stop Loss: %f\n", f.stopLossPrice)
 				f.inTrade = false
 				f.Trades = append(f.Trades, Trade{Price: price, Timestamp: trade.Timestamp, Type: 2})
 				f.buyBars.PointsChannel <- plotter.XY{X: f.candles[len(f.candles)-1].Timestamp / float64(time.Microsecond), Y: price}
 			} else {
 				f.stopLossPrice = math.Max(f.stopLossPrice, price-(stopLossPercent*price))
-			}
+			}*/
 
-			if ((price - f.Trades[len(f.Trades)-1].Price) / f.Trades[len(f.Trades)-1].Price) > minProfitPercent {
+			if f.currentRsi > f.RsiSellLevel {
+				//if (((price - f.Trades[len(f.Trades)-1].Price) / f.Trades[len(f.Trades)-1].Price) > minProfitPercent) && (f.currentRsi > 70.0) {
 				f.inTrade = false
 				f.Trades = append(f.Trades, Trade{Price: price, Timestamp: trade.Timestamp, Type: 2})
-				fmt.Printf("Sell at %s\n", trade.Price)
+				//fmt.Printf("Sell at %s\n", trade.Price)
 			}
 		}
+	}
 
-		if (f.runningJawSMA5 > f.runningTeethSMA8) && (f.runningTeethSMA8 > f.runningLipsSMA13) {
-			if !f.inTrade && (price > f.runningJawSMA5) {
+	if len(f.candles) == 0 {
+		f.candles = append(f.candles, &candles.Candle{})
+	}
+	if ok := f.candles[len(f.candles)-1].AddTrade(trade, f.Timestep); !ok {
+		// Candle has closed
+		closePrice := f.candles[len(f.candles)-1].Close
+		jawMA, jawMAValid := f.jawSMA5.Get(closePrice)
+		if jawMAValid && (f.jawLine != nil) {
+			f.jawLine.PointsChannel <- plotter.XY{X: f.candles[len(f.candles)-1].Timestamp / float64(time.Microsecond), Y: jawMA}
+		}
+
+		teethMA, teethMAValid := f.teethSMA8.Get(closePrice)
+		if teethMAValid && (f.teethLine != nil) {
+			f.teethLine.PointsChannel <- plotter.XY{X: f.candles[len(f.candles)-1].Timestamp / float64(time.Microsecond), Y: teethMA}
+		}
+
+		lipsMA, lipsMAValid := f.lipsSMA13.Get(closePrice)
+		if lipsMAValid && (f.lipsLine != nil) {
+			f.lipsLine.PointsChannel <- plotter.XY{X: f.candles[len(f.candles)-1].Timestamp / float64(time.Microsecond), Y: lipsMA}
+		}
+		f.allLinesValid = jawMAValid && teethMAValid && lipsMAValid
+		//if (jawMA > teethMA) && (teethMA > lipsMA) {
+		if true {
+			if !f.inTrade && (price > teethMA) && (f.currentRsi < f.RsiBuyLevel) {
+				//if !f.inTrade && (f.currentRsi < 30.0) {
 				f.inTrade = true
 				f.Trades = append(f.Trades, Trade{Price: price, Timestamp: trade.Timestamp, Type: 1})
 				f.stopLossPrice = price - (stopLossPercent * price)
-				//f.buyBars.PointsChannel <- price
-				f.buyBars.PointsChannel <- plotter.XY{X: float64(trade.Timestamp) / float64(time.Microsecond), Y: price}
-				fmt.Printf("Buy at %s\n", trade.Price)
+				//fmt.Printf("Buy at %s\n", trade.Price)
+
+				if f.buyBars != nil {
+					f.buyBars.PointsChannel <- plotter.XY{X: float64(trade.Timestamp) / float64(time.Microsecond), Y: price}
+				}
 			}
 		} else {
-			if f.inTrade {
+			/*if f.inTrade {
 				// Sell signal
 				//if ((price - f.Trades[len(f.Trades)-1].Price) / f.Trades[len(f.Trades)-1].Price) > minProfitPercent {
 				f.inTrade = false
@@ -110,94 +158,49 @@ func (f *FractalBot) AddMarketTrade(trade *binance.AggTrade) {
 				f.buyBars.PointsChannel <- plotter.XY{X: float64(trade.Timestamp) / float64(time.Microsecond), Y: price}
 				fmt.Printf("Sell at %s\n", trade.Price)
 				//	}
-			}
-		}
-	}
-
-	if len(f.candles) == 0 {
-		f.candles = append(f.candles, &candles.Candle{})
-	}
-	if ok := f.candles[len(f.candles)-1].AddTrade(trade); !ok {
-		// Candle has closed
-		closePrice := f.candles[len(f.candles)-1].Close
-		if len(f.jawSMA5) < 5 {
-			f.jawSMA5 = append(f.jawSMA5, closePrice)
-		} else {
-			f.runningJawSMA5 = 0.0
-			for _, price := range f.jawSMA5 {
-				f.runningJawSMA5 += price
-			}
-			f.runningJawSMA5 /= 5.0
-			f.jawSMA5 = append(f.jawSMA5[1:], closePrice)
-			f.jawLine.PointsChannel <- plotter.XY{X: f.candles[len(f.candles)-1].Timestamp / float64(time.Microsecond), Y: f.runningJawSMA5}
-		}
-
-		if len(f.teethSMA8) < 8 {
-			f.teethSMA8 = append(f.teethSMA8, closePrice)
-		} else {
-			f.runningTeethSMA8 = 0.0
-			for _, price := range f.teethSMA8 {
-				f.runningTeethSMA8 += price
-			}
-			f.runningTeethSMA8 /= 8.0
-			f.teethSMA8 = append(f.teethSMA8[1:], closePrice)
-			f.teethLine.PointsChannel <- plotter.XY{X: f.candles[len(f.candles)-1].Timestamp / float64(time.Microsecond), Y: f.runningTeethSMA8}
-		}
-
-		if len(f.lipsSMA13) < 13 {
-			f.lipsSMA13 = append(f.lipsSMA13, closePrice)
-		} else {
-			f.allLinesValid = true
-			f.runningLipsSMA13 = 0.0
-			for _, price := range f.lipsSMA13 {
-				f.runningLipsSMA13 += price
-			}
-			f.runningLipsSMA13 /= 13.0
-			f.lipsSMA13 = append(f.lipsSMA13[1:], closePrice)
-			f.lipsLine.PointsChannel <- plotter.XY{X: f.candles[len(f.candles)-1].Timestamp / float64(time.Microsecond), Y: f.runningLipsSMA13}
+			}*/
 		}
 
 		if len(f.candles) == 3 {
-			/*if f.buySignal {
-				// See if we should cancel the signal
-				if f.candles[2].Low < f.runningTeethSMA8 {
-					f.buySignal = false
-					f.fractalTopCount = 0
-				} else {
-					// Or should we buy?
-					if f.candles[2].High > f.entryPrice {
-						f.inTrade = true
-						f.Trades = append(f.Trades, Trade{Price: price, Timestamp: trade.Timestamp, Type: 1})
-						f.stopLossPrice = price - (stopLossPercent * price)
-						fmt.Printf("Buy at %s\n", trade.Price)
-						f.buySignal = false
-					}
-				}
-			}
-			if f.fractalTopCount > 0 {
-				if f.candles[2].Low > f.runningTeethSMA8 {
-					f.fractalTopCount++
-					if f.fractalTopCount > 5 && !f.inTrade {
-						f.buySignal = true
-					}
-				}
-			}
-
-			// Check for fractals
-			if (f.candles[1].High > f.candles[0].High) && (f.candles[1].High > f.candles[2].High) && (f.fractalTopCount == 0) {
-				f.entryPrice = f.candles[1].High
-				f.fractalTopCount = 1
-			} else if (f.candles[1].Low < f.candles[0].Low) && (f.candles[1].Low > f.candles[2].Low) {
-
-			}
-			*/
 			// Remove the oldest candle
-			f.chartCandles.CandlesChannel <- f.candles[0]
+			if f.chartCandles != nil {
+				f.chartCandles.CandlesChannel <- f.candles[0]
+			}
 			f.candles = append(f.candles[1:], &candles.Candle{})
 		} else {
 			f.candles = append(f.candles, &candles.Candle{})
-			if ok := f.candles[len(f.candles)-1].AddTrade(trade); !ok {
+			if ok := f.candles[len(f.candles)-1].AddTrade(trade, f.Timestep); !ok {
 				fmt.Println("Somethings gone badly wrong")
+			}
+		}
+
+		if len(f.candles) > 1 {
+			difference := closePrice - f.candles[0].Close
+			gain := 0.0
+			loss := 0.0
+			if difference > 0.0 {
+				gain = difference
+			} else {
+				loss = math.Abs(difference)
+			}
+
+			f.rsiGains = append(f.rsiGains, gain)
+			f.rsiLosses = append(f.rsiLosses, loss)
+
+			if len(f.rsiGains) == 15 {
+				// Calculate MA for gains&losses
+				f.rsiAvgGain = floats.Sum(f.rsiGains) / float64(len(f.rsiGains))
+				f.rsiAvgLoss = floats.Sum(f.rsiLosses) / float64(len(f.rsiLosses))
+
+				rs := f.rsiAvgGain / f.rsiAvgLoss
+				rsi := 100 - (100 / (1 + rs))
+
+				if f.rsiLine != nil {
+					f.rsiLine.PointsChannel <- plotter.XY{X: f.candles[1].Timestamp / float64(time.Microsecond), Y: rsi}
+				}
+				f.rsiGains = f.rsiGains[1:]
+				f.rsiLosses = f.rsiLosses[1:]
+				f.currentRsi = rsi
 			}
 		}
 	}
@@ -217,5 +220,22 @@ func (f *FractalBot) DisplayPnL(tradeQuantity float64) {
 			amountHeld = 0
 		}
 	}
-	f.chart.Output()
+	if f.chart != nil {
+		f.chart.Output()
+	}
+}
+
+func (f *FractalBot) GetPnL(tradeQuantity float64) float64 {
+	f.PnL = tradeQuantity
+	amountHeld := 0.0
+	for _, trade := range f.Trades {
+		if trade.Type == 1 {
+			// buy
+			amountHeld = f.PnL / trade.Price
+		} else if trade.Type == 2 {
+			f.PnL = (amountHeld * trade.Price)
+			amountHeld = 0
+		}
+	}
+	return f.PnL
 }
