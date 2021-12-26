@@ -1,48 +1,54 @@
-import React, { useState } from 'react';
-import Plot from 'react-plotly.js'
+import React, { useState, useCallback } from 'react';
+import Select from "react-select";
+
+import RunPlot from './RunPlot';
+
+function nanoToString(timestep) {
+  var nano = 1000 * 1000 * 1000
+  var minute = 60 * nano
+  var minutes = Math.floor(timestep / minute);
+
+  var seconds = ((timestep % minute) / nano).toFixed(0);
+  return minutes + "m:" + (seconds < 10 ? '0' : '') + seconds + "s";
+}
 
 /**
  * Main application component
  *
  * @returns
  */
-function App() {
+ export const App = () => {
+  const [timesteps, setTimesteps] = useState()
+  const [selectedOption, setSelectedOption] = useState()
+
   const [traces, setTraces] = useState(function() {
     fetch("http://localhost:8080/encode").then(function(response) {
       return response.json();
     }).then(function(data) {
-      var traces = []
-      for (let line of Object.entries(data.linesByTimestamp["120000000000"].lines)) {
-        var x = []
-        var y = []
-        var z = []
-        for (let point of Object.entries(line[1].points.sort((a, b) => (a.rsiSell > b.rsiSell) ? 1 : -1))) {
-          x.push(line[0])
-          y.push(point[1].rsiSell)
-          z.push(point[1].pnl)
-        }
-        traces.push({
-          x: x,
-          y: y,
-          z: z,
-          type: 'scatter3d',
-          mode: 'lines'  
-        })
-    }
-      setTraces(traces)
-      //console.log(JSON.stringify(data))    
+      var timesteps = []
+      for (let step of Object.entries(data.linesByTimestamp)) {
+        timesteps.push({value: step[0], label: nanoToString(step[0])})
+      }
+      setTimesteps(timesteps)
+      setTraces(data)
+      //console.log(JSON.stringify(data))
+      setSelectedOption(timesteps[0])
+      //console.log(JSON.stringify(timesteps[0]))
+
     }).catch(error => console.log(error.message))
   });
-  console.log(JSON.stringify(traces))
+
+  const onOptionChange = useCallback((option) => setSelectedOption(option), []);
+
   return (
-    <Plot
-      data={traces}
-      layout={{
-        width: 900,
-        height: 800,
-        title: `Simple 3D Scatter`
-      }}
-    />
+    <div>
+      <Select
+        value={selectedOption}
+        onChange={onOptionChange}
+        options={timesteps}
+      />
+      {(traces && selectedOption) ? <RunPlot traces={traces && traces.linesByTimestamp[selectedOption.value]} /> : ""}
+    </div>
   );
 }
 export default App;
