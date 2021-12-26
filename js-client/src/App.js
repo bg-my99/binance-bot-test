@@ -3,6 +3,14 @@ import Select from "react-select";
 
 import RunPlot from './RunPlot';
 
+function microToString(timestep) {
+  var nano = 1000 * 1000 * 1000
+  var minute = 60 * nano
+  var minutes = Math.floor(timestep / minute);
+
+  var seconds = ((timestep % minute) / nano).toFixed(0);
+  return minutes + "m:" + (seconds < 10 ? '0' : '') + seconds + "s";
+}
 
 /**
  * Main application component
@@ -19,7 +27,7 @@ import RunPlot from './RunPlot';
     }).then(function(data) {
       var timesteps = []
       for (let step of Object.entries(data.linesByTimestamp)) {
-        timesteps.push({value: step[0], label: step[0]})
+        timesteps.push({value: step[0], label: microToString(step[0])})
       }
       setTimesteps(timesteps)
       setTraces(data)
