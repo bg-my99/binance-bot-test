@@ -26,7 +26,7 @@ func getTrades(date time.Time) []binance.AggTrade {
 	// Strip off the time
 	day, _ := time.Parse("2006/01/02", date.Format("2006/01/02"))
 
-	symbol := "BNBBUSD"
+	symbol := "FTMBUSD"
 	q := req.URL.Query()
 	q.Add("symbol", symbol)
 	q.Add("startTime", strconv.FormatInt(day.Add(time.Duration(-time.Minute)).UnixNano()/int64(time.Millisecond), 10))
@@ -150,6 +150,26 @@ func main() {
 				fmt.Println("Could not parse date from:" + cfg.FetchForDate)
 			} else {
 				date = t
+				currentYear, currentMonth, _ := date.Date()
+				currentLocation := date.Location()
+
+				firstOfMonth := time.Date(currentYear, currentMonth, 1, 0, 0, 0, 0, currentLocation)
+				currentDate := firstOfMonth
+				lastOfMonth := firstOfMonth.AddDate(0, 1, -1)
+
+				for ; !currentDate.After(lastOfMonth) && currentDate.Before(time.Now()); currentDate = currentDate.AddDate(0, 0, 1) {
+					trades = getTrades(currentDate)
+					filename := fmt.Sprintf("trades-%s.json", currentDate.Format("2006-01-02"))
+					file, _ := json.MarshalIndent(trades, "", " ")
+					_ = ioutil.WriteFile(filename, file, 0644)
+					fmt.Println("Wrote:", filename)
+				}
+			}
+		} else {
+			trades = getTrades(date)
+			if cfg.WriteTrades {
+				file, _ := json.MarshalIndent(trades, "", " ")
+				_ = ioutil.WriteFile("trades.json", file, 0644)
 			}
 		}
 		trades = getTrades(date)
