@@ -172,11 +172,7 @@ func main() {
 				_ = ioutil.WriteFile("trades.json", file, 0644)
 			}
 		}
-		trades = getTrades(date)
-		if cfg.WriteTrades {
-			file, _ := json.MarshalIndent(trades, "", " ")
-			_ = ioutil.WriteFile("trades.json", file, 0644)
-		}
+		return
 	} else if cfg.TradesSource == "file" {
 		filenames := []string{
 			/*"data/trades-2021-11-01.json", "data/trades-2021-11-02.json",
