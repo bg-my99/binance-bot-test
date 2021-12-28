@@ -16,46 +16,56 @@ import (
 
 const numPoints = 20
 
-func getTrades(date time.Time) []binance.AggTrade {
-	req, err := http.NewRequest("GET", "https://api.binance.com/api/v3/aggTrades", nil)
-	if err != nil {
-		fmt.Print(err)
-		return nil
+func getApproximateFirstTradeID(symbol string, day time.Time) (int64, error) {
+	slice := []int{1, 2, 4, 8}
+	for _, minutes := range slice {
+		req, err := http.NewRequest("GET", "https://api.binance.com/api/v3/aggTrades", nil)
+		if err != nil {
+			fmt.Print(err)
+			return -1, fmt.Errorf("getApproximateFirstTradeID: error with NewRequest:%v", err)
+		}
+		q := req.URL.Query()
+		q.Add("symbol", symbol)
+		q.Add("startTime", strconv.FormatInt(day.Add(time.Duration(-time.Minute*time.Duration(minutes))).UnixNano()/int64(time.Millisecond), 10))
+		q.Add("endTime", strconv.FormatInt(day.UnixNano()/int64(time.Millisecond), 10))
+		req.URL.RawQuery = q.Encode()
+
+		resp, err := http.Get(req.URL.String())
+		if err != nil {
+			return -1, fmt.Errorf("getApproximateFirstTradeID: error with http.Get:%v", err)
+		}
+		if resp.StatusCode != 200 {
+			fmt.Printf("Received http %d code\n", resp.StatusCode)
+			return -1, fmt.Errorf("getApproximateFirstTradeID: received http %d", resp.StatusCode)
+		}
+
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			fmt.Println(err)
+			return -1, fmt.Errorf("getApproximateFirstTradeID: ReadAll returned %v", err)
+		}
+		//Convert the body to type string
+		res := make([]*binance.AggTrade, 0)
+		err = json.Unmarshal(body, &res)
+		if err != nil {
+			fmt.Println("Couldnt parse json from initial trades")
+		}
+		if len(res) > 0 {
+			return res[0].AggTradeID, nil
+		}
 	}
+	return -1, fmt.Errorf("getApproximateFirstTradeID: No trades found")
+}
+
+func getTrades(symbol string, date time.Time) []binance.AggTrade {
 
 	// Strip off the time
 	day, _ := time.Parse("2006/01/02", date.Format("2006/01/02"))
-
-	symbol := "FTMBUSD"
-	q := req.URL.Query()
-	q.Add("symbol", symbol)
-	q.Add("startTime", strconv.FormatInt(day.Add(time.Duration(-time.Minute)).UnixNano()/int64(time.Millisecond), 10))
-	q.Add("endTime", strconv.FormatInt(day.UnixNano()/int64(time.Millisecond), 10))
-	req.URL.RawQuery = q.Encode()
-
-	resp, err := http.Get(req.URL.String())
+	fromID, err := getApproximateFirstTradeID(symbol, day)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Printf("Couldnt getApproximateFirstTradeID:%v\n", err)
 		return nil
 	}
-	if resp.StatusCode != 200 {
-		fmt.Printf("Received http %d code\n", resp.StatusCode)
-		return nil
-	}
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Println(err)
-		return nil
-	}
-	//Convert the body to type string
-	res := make([]*binance.AggTrade, 0)
-	err = json.Unmarshal(body, &res)
-
-	if err != nil {
-		fmt.Println("Couldnt parse json from initial trades")
-	}
-	fromID := res[0].AggTradeID
 
 	fmt.Println("Fetching for " + day.Format("2006-01-02"))
 
@@ -140,6 +150,7 @@ func main() {
 	fmt.Printf("Connecting to %s\n", whichNet)
 	binance.UseTestnet = cfg.UseTestnet
 
+	symbol := "GALABUSD"
 	var trades []binance.AggTrade
 	if cfg.TradesSource == "binance" {
 		date := time.Now()
@@ -158,7 +169,7 @@ func main() {
 				lastOfMonth := firstOfMonth.AddDate(0, 1, -1)
 
 				for ; !currentDate.After(lastOfMonth) && currentDate.Before(time.Now()); currentDate = currentDate.AddDate(0, 0, 1) {
-					trades = getTrades(currentDate)
+					trades = getTrades(symbol, currentDate)
 					filename := fmt.Sprintf("trades-%s.json", currentDate.Format("2006-01-02"))
 					file, _ := json.MarshalIndent(trades, "", " ")
 					_ = ioutil.WriteFile(filename, file, 0644)
@@ -166,7 +177,7 @@ func main() {
 				}
 			}
 		} else {
-			trades = getTrades(date)
+			trades = getTrades(symbol, date)
 			if cfg.WriteTrades {
 				file, _ := json.MarshalIndent(trades, "", " ")
 				_ = ioutil.WriteFile("trades.json", file, 0644)
