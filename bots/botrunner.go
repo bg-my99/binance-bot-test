@@ -36,6 +36,7 @@ type BotRunResult struct {
 	RsiBuy   float64
 	RsiSell  float64
 	PnL      float64
+	Trades   *[]Trade
 }
 
 func (br *BotRunner) Run(trades []binance.AggTrade, chResults chan BotRunResult) {
@@ -53,7 +54,7 @@ func (br *BotRunner) Run(trades []binance.AggTrade, chResults chan BotRunResult)
 						bot.AddMarketTrade(&trade)
 					}
 					//fmt.Printf("PnL for timestep %v, rsiB:%f, rsiS:%f:%f\n", ts, rsiBuy, rsiSell, bot.GetPnL(100))
-					chResults <- BotRunResult{Timestep: ts, RsiBuy: rsiBuy, RsiSell: rsiSell, PnL: bot.GetPnL(100)}
+					chResults <- BotRunResult{Timestep: ts, RsiBuy: rsiBuy, RsiSell: rsiSell, PnL: bot.GetPnL(100), Trades: &bot.Trades}
 					defer wg.Done()
 
 				}(timestep, rsiBuyCurrent, rsiSellCurrent, &wg)
