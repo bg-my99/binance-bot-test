@@ -16,17 +16,12 @@ import (
 
 const numPoints = 20
 
-func getTrades(date time.Time) []binance.AggTrade {
+func getApproximateFirstTradeID(symbol string, day time.Time) int64 {
 	req, err := http.NewRequest("GET", "https://api.binance.com/api/v3/aggTrades", nil)
 	if err != nil {
 		fmt.Print(err)
-		return nil
+		return -1
 	}
-
-	// Strip off the time
-	day, _ := time.Parse("2006/01/02", date.Format("2006/01/02"))
-
-	symbol := "FTMBUSD"
 	q := req.URL.Query()
 	q.Add("symbol", symbol)
 	q.Add("startTime", strconv.FormatInt(day.Add(time.Duration(-time.Minute)).UnixNano()/int64(time.Millisecond), 10))
@@ -36,17 +31,17 @@ func getTrades(date time.Time) []binance.AggTrade {
 	resp, err := http.Get(req.URL.String())
 	if err != nil {
 		fmt.Println(err)
-		return nil
+		return -1
 	}
 	if resp.StatusCode != 200 {
 		fmt.Printf("Received http %d code\n", resp.StatusCode)
-		return nil
+		return -1
 	}
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		fmt.Println(err)
-		return nil
+		return -1
 	}
 	//Convert the body to type string
 	res := make([]*binance.AggTrade, 0)
@@ -55,8 +50,14 @@ func getTrades(date time.Time) []binance.AggTrade {
 	if err != nil {
 		fmt.Println("Couldnt parse json from initial trades")
 	}
-	fromID := res[0].AggTradeID
+	return res[0].AggTradeID
+}
 
+func getTrades(symbol string, date time.Time) []binance.AggTrade {
+
+	// Strip off the time
+	day, _ := time.Parse("2006/01/02", date.Format("2006/01/02"))
+	fromID := getApproximateFirstTradeID(symbol, day)
 	fmt.Println("Fetching for " + day.Format("2006-01-02"))
 
 	current_time := day.UnixNano() / int64(time.Millisecond)
@@ -140,6 +141,7 @@ func main() {
 	fmt.Printf("Connecting to %s\n", whichNet)
 	binance.UseTestnet = cfg.UseTestnet
 
+	symbol := "GALABUSD"
 	var trades []binance.AggTrade
 	if cfg.TradesSource == "binance" {
 		date := time.Now()
@@ -158,7 +160,7 @@ func main() {
 				lastOfMonth := firstOfMonth.AddDate(0, 1, -1)
 
 				for ; !currentDate.After(lastOfMonth) && currentDate.Before(time.Now()); currentDate = currentDate.AddDate(0, 0, 1) {
-					trades = getTrades(currentDate)
+					trades = getTrades(symbol, currentDate)
 					filename := fmt.Sprintf("trades-%s.json", currentDate.Format("2006-01-02"))
 					file, _ := json.MarshalIndent(trades, "", " ")
 					_ = ioutil.WriteFile(filename, file, 0644)
@@ -166,7 +168,7 @@ func main() {
 				}
 			}
 		} else {
-			trades = getTrades(date)
+			trades = getTrades(symbol, date)
 			if cfg.WriteTrades {
 				file, _ := json.MarshalIndent(trades, "", " ")
 				_ = ioutil.WriteFile("trades.json", file, 0644)
