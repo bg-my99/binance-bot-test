@@ -120,9 +120,17 @@ func getTrades(symbol string, date time.Time) []binance.AggTrade {
 	return trades
 }
 
+type SingleTrade struct {
+	BuyPrice      float64 `json:"buyPrice"`
+	SellPrice     float64 `json:"sellPrice"`
+	BuyTimestamp  int64   `json:"buyTimestamp"`
+	SellTimestamp int64   `json:"sellTimestamp"`
+}
+
 type ValuePoint struct {
-	RsiSell float64 `json:"rsiSell"`
-	PnL     float64 `json:"pnl"`
+	RsiSell float64       `json:"rsiSell"`
+	PnL     float64       `json:"pnl"`
+	Trades  []SingleTrade `json:"trades"`
 }
 
 type ValueLine struct {
@@ -135,6 +143,22 @@ type ValueLines struct {
 
 type RunResults struct {
 	LinesByTimestamp map[time.Duration]ValueLines `json:"linesByTimestamp"`
+}
+
+func listTrades(trades *[]bots.Trade) []SingleTrade {
+	result := make([]SingleTrade, 0)
+	var currentTrade SingleTrade
+	for _, trade := range *trades {
+		if trade.Type == 1 {
+			currentTrade = SingleTrade{BuyPrice: trade.Price, BuyTimestamp: trade.Timestamp}
+		} else {
+			currentTrade.SellPrice = trade.Price
+			currentTrade.SellTimestamp = trade.Timestamp
+
+			result = append(result, currentTrade)
+		}
+	}
+	return result
 }
 
 func main() {
@@ -225,7 +249,9 @@ func main() {
 			if _, ok := results.LinesByTimestamp[result.Timestep].Lines[rsiAsStr]; !ok {
 				results.LinesByTimestamp[result.Timestep].Lines[rsiAsStr] = ValueLine{Points: make([]ValuePoint, 0)}
 			}
-			newPoints := append(results.LinesByTimestamp[result.Timestep].Lines[rsiAsStr].Points, ValuePoint{RsiSell: result.RsiSell, PnL: result.PnL})
+			newPoints := append(
+				results.LinesByTimestamp[result.Timestep].Lines[rsiAsStr].Points, ValuePoint{RsiSell: result.RsiSell, PnL: result.PnL, Trades: listTrades(result.Trades)},
+			)
 			results.LinesByTimestamp[result.Timestep].Lines[rsiAsStr] = ValueLine{Points: newPoints}
 		}
 	}(resultsChannel)
