@@ -16,13 +16,13 @@ import (
 
 const numPoints = 20
 
-func getApproximateFirstTradeID(symbol string, day time.Time) int64 {
+func getApproximateFirstTradeID(symbol string, day time.Time) (int64, error) {
 	slice := []int{1, 2, 4, 8}
 	for _, minutes := range slice {
 		req, err := http.NewRequest("GET", "https://api.binance.com/api/v3/aggTrades", nil)
 		if err != nil {
 			fmt.Print(err)
-			return -1
+			return -1, fmt.Errorf("getApproximateFirstTradeID: error with NewRequest:%v", err)
 		}
 		q := req.URL.Query()
 		q.Add("symbol", symbol)
@@ -32,18 +32,17 @@ func getApproximateFirstTradeID(symbol string, day time.Time) int64 {
 
 		resp, err := http.Get(req.URL.String())
 		if err != nil {
-			fmt.Println(err)
-			return -1
+			return -1, fmt.Errorf("getApproximateFirstTradeID: error with http.Get:%v", err)
 		}
 		if resp.StatusCode != 200 {
 			fmt.Printf("Received http %d code\n", resp.StatusCode)
-			return -1
+			return -1, fmt.Errorf("getApproximateFirstTradeID: received http %d", resp.StatusCode)
 		}
 
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			fmt.Println(err)
-			return -1
+			return -1, fmt.Errorf("getApproximateFirstTradeID: ReadAll returned %v", err)
 		}
 		//Convert the body to type string
 		res := make([]*binance.AggTrade, 0)
@@ -52,18 +51,22 @@ func getApproximateFirstTradeID(symbol string, day time.Time) int64 {
 			fmt.Println("Couldnt parse json from initial trades")
 		}
 		if len(res) > 0 {
-			return res[0].AggTradeID
+			return res[0].AggTradeID, nil
 		}
 	}
-	fmt.Println("getApproximateFirstTradeID: No trades found")
-	return -1
+	return -1, fmt.Errorf("getApproximateFirstTradeID: No trades found")
 }
 
 func getTrades(symbol string, date time.Time) []binance.AggTrade {
 
 	// Strip off the time
 	day, _ := time.Parse("2006/01/02", date.Format("2006/01/02"))
-	fromID := getApproximateFirstTradeID(symbol, day)
+	fromID, err := getApproximateFirstTradeID(symbol, day)
+	if err != nil {
+		fmt.Printf("Couldnt getApproximateFirstTradeID:%v\n", err)
+		return nil
+	}
+
 	fmt.Println("Fetching for " + day.Format("2006-01-02"))
 
 	current_time := day.UnixNano() / int64(time.Millisecond)
