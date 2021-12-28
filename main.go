@@ -17,40 +17,46 @@ import (
 const numPoints = 20
 
 func getApproximateFirstTradeID(symbol string, day time.Time) int64 {
-	req, err := http.NewRequest("GET", "https://api.binance.com/api/v3/aggTrades", nil)
-	if err != nil {
-		fmt.Print(err)
-		return -1
-	}
-	q := req.URL.Query()
-	q.Add("symbol", symbol)
-	q.Add("startTime", strconv.FormatInt(day.Add(time.Duration(-time.Minute)).UnixNano()/int64(time.Millisecond), 10))
-	q.Add("endTime", strconv.FormatInt(day.UnixNano()/int64(time.Millisecond), 10))
-	req.URL.RawQuery = q.Encode()
+	slice := []int{1, 2, 4, 8}
+	for _, minutes := range slice {
+		req, err := http.NewRequest("GET", "https://api.binance.com/api/v3/aggTrades", nil)
+		if err != nil {
+			fmt.Print(err)
+			return -1
+		}
+		q := req.URL.Query()
+		q.Add("symbol", symbol)
+		q.Add("startTime", strconv.FormatInt(day.Add(time.Duration(-time.Minute*time.Duration(minutes))).UnixNano()/int64(time.Millisecond), 10))
+		q.Add("endTime", strconv.FormatInt(day.UnixNano()/int64(time.Millisecond), 10))
+		req.URL.RawQuery = q.Encode()
 
-	resp, err := http.Get(req.URL.String())
-	if err != nil {
-		fmt.Println(err)
-		return -1
-	}
-	if resp.StatusCode != 200 {
-		fmt.Printf("Received http %d code\n", resp.StatusCode)
-		return -1
-	}
+		resp, err := http.Get(req.URL.String())
+		if err != nil {
+			fmt.Println(err)
+			return -1
+		}
+		if resp.StatusCode != 200 {
+			fmt.Printf("Received http %d code\n", resp.StatusCode)
+			return -1
+		}
 
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Println(err)
-		return -1
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			fmt.Println(err)
+			return -1
+		}
+		//Convert the body to type string
+		res := make([]*binance.AggTrade, 0)
+		err = json.Unmarshal(body, &res)
+		if err != nil {
+			fmt.Println("Couldnt parse json from initial trades")
+		}
+		if len(res) > 0 {
+			return res[0].AggTradeID
+		}
 	}
-	//Convert the body to type string
-	res := make([]*binance.AggTrade, 0)
-	err = json.Unmarshal(body, &res)
-
-	if err != nil {
-		fmt.Println("Couldnt parse json from initial trades")
-	}
-	return res[0].AggTradeID
+	fmt.Println("getApproximateFirstTradeID: No trades found")
+	return -1
 }
 
 func getTrades(symbol string, date time.Time) []binance.AggTrade {
